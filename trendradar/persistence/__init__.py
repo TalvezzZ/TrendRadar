@@ -11,8 +11,7 @@ from trendradar.persistence.schema import (
     ensure_matched_keywords_column
 )
 from trendradar.persistence.ai_storage import AIAnalysisStorage
-# KeywordStatsManager will be added in Task 3
-# from trendradar.persistence.keyword_stats import KeywordStatsManager
+from trendradar.persistence.keyword_stats import KeywordStatsManager
 
 __all__ = [
     'load_schema_file',
@@ -20,5 +19,5 @@ __all__ = [
     'initialize_memory_db',
     'ensure_matched_keywords_column',
     'AIAnalysisStorage',
-    # 'KeywordStatsManager',  # Will be added in Task 3
+    'KeywordStatsManager',
 ]
