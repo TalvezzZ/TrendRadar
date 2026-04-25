@@ -30,7 +30,7 @@ class AIClient:
                 - NUM_RETRIES: 重试次数（可选）
                 - FALLBACK_MODELS: 备用模型列表（可选）
         """
-        self.model = config.get("MODEL", "deepseek/deepseek-chat")
+        self.model = config.get("MODEL", "deepseek/deepseek-v4-flash")
         self.api_key = config.get("API_KEY") or os.environ.get("AI_API_KEY", "")
         self.api_base = config.get("API_BASE", "")
         self.temperature = config.get("TEMPERATURE", 1.0)
