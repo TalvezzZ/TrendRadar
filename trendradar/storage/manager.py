@@ -6,6 +6,7 @@
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from trendradar.storage.base import StorageBackend, NewsData, RSSData
@@ -366,6 +367,79 @@ class StorageManager:
     def get_all_rss_ids(self, date=None):
         """获取所有 RSS ID 和标题"""
         return self.get_backend().get_all_rss_ids(date)
+
+    # === 持久化模块集成方法 ===
+
+    def get_memory_db_path(self) -> str:
+        """获取 memory.db 路径"""
+        if self.backend_type == 'local' or self._resolve_backend_type() == 'local':
+            from trendradar.storage.local import LocalStorageBackend
+            backend = self.get_backend()
+            if isinstance(backend, LocalStorageBackend):
+                output_dir = Path(backend.data_dir)
+                # 确保目录存在
+                output_dir.mkdir(parents=True, exist_ok=True)
+                return str(output_dir / 'memory.db')
+        # 远程模式暂不支持 memory.db
+        raise NotImplementedError("Memory DB not supported in remote mode yet")
+
+    def ensure_memory_db(self):
+        """确保 memory.db 存在并返回连接"""
+        import sqlite3
+        from trendradar.persistence.schema import initialize_memory_db
+
+        memory_db_path = self.get_memory_db_path()
+
+        # 如果文件不存在，initialize_memory_db 会创建并初始化
+        conn = initialize_memory_db(memory_db_path)
+
+        return conn
+
+    def get_today_db_connection(self):
+        """获取今天的数据库连接"""
+        import sqlite3
+        from trendradar.storage.local import LocalStorageBackend
+
+        if self.backend_type == 'local' or self._resolve_backend_type() == 'local':
+            backend = self.get_backend()
+            if isinstance(backend, LocalStorageBackend):
+                from datetime import datetime
+                today = datetime.now(backend._get_configured_time().tzinfo or __import__('pytz').timezone(DEFAULT_TIMEZONE)).strftime('%Y-%m-%d')
+                db_path = backend._get_db_path(today)
+
+                # 检查数据库是否存在，如果不存在需要先创建基础表
+                db_exists = db_path.exists()
+
+                conn = sqlite3.connect(str(db_path))
+                conn.row_factory = sqlite3.Row
+
+                # 如果是新数据库，先创建基础表
+                if not db_exists:
+                    from trendradar.storage.sqlite_mixin import SQLiteStorageMixin
+                    # 创建基础的新闻表
+                    conn.execute('''
+                        CREATE TABLE IF NOT EXISTS news_items (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            source_id TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            url TEXT,
+                            rank INTEGER,
+                            heat_value TEXT,
+                            timestamp TEXT NOT NULL
+                        )
+                    ''')
+                    conn.commit()
+
+                # 确保有 AI 分析表
+                from trendradar.persistence.schema import (
+                    initialize_ai_analysis_tables,
+                    ensure_matched_keywords_column
+                )
+                initialize_ai_analysis_tables(conn)
+                ensure_matched_keywords_column(conn)
+
+                return conn
+        raise NotImplementedError("Only local backend supported for now")
 
 
 

@@ -70,25 +70,22 @@ class KeywordStatsManager:
 
         Args:
             keyword: 关键词
-            days: 过去多少天
+            days: 过去多少天（返回最近的N条记录）
 
         Returns:
             趋势数据列表，按日期排序
         """
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=days-1)
-
         cursor = self.conn.execute("""
             SELECT * FROM keyword_trends
             WHERE keyword = ?
-              AND date BETWEEN ? AND ?
-            ORDER BY date ASC
-        """, (keyword, str(start_date), str(end_date)))
+            ORDER BY date DESC
+            LIMIT ?
+        """, (keyword, days))
 
         rows = cursor.fetchall()
 
         results = []
-        for row in rows:
+        for row in reversed(rows):  # 反转以按日期升序排列
             result = dict(row)
             result['platforms'] = json.loads(result['platforms'])
             results.append(result)

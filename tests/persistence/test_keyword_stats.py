@@ -125,3 +125,25 @@ def test_get_top_keywords_by_date(memory_db):
     assert len(top_keywords) == 2
     assert top_keywords[0]['keyword'] == 'DeepSeek'
     assert top_keywords[1]['keyword'] == '华为'
+
+
+def test_get_keywords_by_date_range(memory_db):
+    """测试获取日期范围内的关键词"""
+    manager = KeywordStatsManager(memory_db)
+
+    # 插入多个日期的数据
+    for day in range(23, 26):  # 23, 24, 25
+        for keyword in ['DeepSeek', 'AI']:
+            keyword_data = {
+                'date': f'2026-04-{day}',
+                'keyword': keyword,
+                'count': day * 10,
+                'platforms': ['微博'],
+                'rank': 1
+            }
+            manager.update_keyword_stat(keyword_data)
+
+    # 查询范围
+    results = manager.get_keywords_by_date_range('2026-04-23', '2026-04-25')
+
+    assert len(results) == 6  # 3 days * 2 keywords

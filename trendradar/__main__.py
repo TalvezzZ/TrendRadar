@@ -584,6 +584,146 @@ class NewsAnalyzer:
             traceback.print_exc(file=sys.stderr)
             return AIAnalysisResult(success=False, error=f"{error_type}: {error_msg}")
 
+    def _save_analysis_to_persistence(
+        self,
+        ai_result: AIAnalysisResult,
+        stats: List[Dict],
+        rss_items: Optional[List[Dict]],
+        mode: str,
+        id_to_name: Optional[Dict],
+        data_source: Optional[Dict],
+    ) -> None:
+        """保存 AI 分析结果和关键词统计到持久化层"""
+        from datetime import datetime
+
+        # 1. 保存 AI 分析结果到日期数据库
+        try:
+            # 先获取连接以确保表存在，然后获取路径
+            db_conn = self.storage_manager.get_today_db_connection()
+            db_conn.close()
+
+            # 获取数据库路径
+            from trendradar.storage.local import LocalStorageBackend
+            backend = self.storage_manager.get_backend()
+            if isinstance(backend, LocalStorageBackend):
+                today = datetime.now(backend._get_configured_time().tzinfo or __import__('pytz').timezone(DEFAULT_TIMEZONE)).strftime('%Y-%m-%d')
+                db_path = str(backend._get_db_path(today))
+            else:
+                print("[持久化] 当前不是本地后端，跳过 AI 分析保存")
+                return
+
+            from trendradar.persistence.ai_storage import AIAnalysisStorage
+
+            ai_storage = AIAnalysisStorage(db_path)
+
+            # 提取关键词列表
+            matched_keywords = []
+            if stats:
+                for stat in stats:
+                    word = stat.get("word", "")
+                    if word:
+                        matched_keywords.append(word)
+
+            # 提取平台列表
+            platforms = list(id_to_name.values()) if id_to_name else []
+
+            # 计算新闻数量
+            news_count = 0
+            if data_source:
+                for titles in data_source.values():
+                    news_count += len(titles)
+
+            # 计算 RSS 数量
+            rss_count = 0
+            if rss_items:
+                for item in rss_items:
+                    rss_count += item.get("count", 0)
+
+            # 构建分析数据
+            analysis_data = {
+                'analysis_time': datetime.now().isoformat(),
+                'report_mode': mode,
+                'news_count': news_count,
+                'rss_count': rss_count,
+                'matched_keywords': matched_keywords,
+                'platforms': platforms,
+                'full_result': {
+                    'core_trends': ai_result.core_trends,
+                    'sentiment_controversy': ai_result.sentiment_controversy,
+                    'signals': ai_result.signals,
+                    'rss_insights': ai_result.rss_insights,
+                    'outlook_strategy': ai_result.outlook_strategy,
+                    'standalone_summaries': ai_result.standalone_summaries
+                }
+            }
+
+            analysis_id = ai_storage.save_analysis_result(analysis_data)
+
+            # Prepare sections data - convert standalone_summaries to JSON string
+            import json
+            sections_data = {
+                'core_trends': ai_result.core_trends,
+                'sentiment_controversy': ai_result.sentiment_controversy,
+                'signals': ai_result.signals,
+                'rss_insights': ai_result.rss_insights,
+                'outlook_strategy': ai_result.outlook_strategy,
+                'standalone_summaries': json.dumps(ai_result.standalone_summaries, ensure_ascii=False)
+            }
+            ai_storage.save_analysis_sections(analysis_id, sections_data)
+
+            print(f"[持久化] AI 分析结果已保存（ID: {analysis_id}）")
+
+        except Exception as e:
+            import traceback
+            print(f"[持久化] 保存 AI 分析结果失败: {e}")
+            traceback.print_exc()
+
+        # 2. 更新关键词统计到 memory.db
+        try:
+            memory_conn = self.storage_manager.ensure_memory_db()
+            from trendradar.persistence.keyword_stats import KeywordStatsManager
+
+            keyword_manager = KeywordStatsManager(memory_conn)
+
+            # 统计关键词出现次数和排名
+            today = datetime.now().strftime('%Y-%m-%d')
+            keywords_data = []
+
+            if stats:
+                for rank, stat in enumerate(stats, 1):
+                    keyword = stat.get("word", "")
+                    count = len(stat.get("titles", []))
+
+                    if keyword and count > 0:
+                        # 提取该关键词出现的平台
+                        keyword_platforms = []
+                        for platform_id, titles in data_source.items() if data_source else []:
+                            for title_info in titles:
+                                title = title_info.get("title", "")
+                                if keyword in title:
+                                    platform_name = id_to_name.get(platform_id, platform_id) if id_to_name else platform_id
+                                    if platform_name not in keyword_platforms:
+                                        keyword_platforms.append(platform_name)
+
+                        keywords_data.append({
+                            'date': today,
+                            'keyword': keyword,
+                            'count': count,
+                            'platforms': keyword_platforms,
+                            'rank': rank
+                        })
+
+            if keywords_data:
+                keyword_manager.batch_update_keywords(keywords_data)
+                print(f"[持久化] 关键词统计已更新（{len(keywords_data)} 个关键词）")
+
+            memory_conn.close()
+
+        except Exception as e:
+            import traceback
+            print(f"[持久化] 更新关键词统计失败: {e}")
+            traceback.print_exc()
+
     def _load_analysis_data(
         self,
         quiet: bool = False,
@@ -867,6 +1007,17 @@ class NewsAnalyzer:
                 stats, rss_items, mode, report_type, id_to_name,
                 current_results=data_source, schedule=schedule,
                 standalone_data=standalone_data
+            )
+
+        # === 持久化：保存 AI 分析结果和关键词统计 ===
+        if ai_result and ai_result.success:
+            self._save_analysis_to_persistence(
+                ai_result=ai_result,
+                stats=stats,
+                rss_items=rss_items,
+                mode=mode,
+                id_to_name=id_to_name,
+                data_source=data_source
             )
 
         # 翻译 RSS 内容（如果启用）— 在 HTML 生成前执行，确保网页版也能展示翻译内容
