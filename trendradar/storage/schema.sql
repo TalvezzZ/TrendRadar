@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS news_items (
     crawl_count INTEGER DEFAULT 1,       -- 抓取次数
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    matched_keywords TEXT DEFAULT '[]',     -- JSON array of matched keywords
     FOREIGN KEY (platform_id) REFERENCES platforms(id)
 );
 
