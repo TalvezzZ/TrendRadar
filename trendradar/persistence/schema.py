@@ -43,6 +43,24 @@ def initialize_ai_analysis_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def initialize_memory_tables(conn: sqlite3.Connection) -> None:
+    """
+    初始化记忆相关表
+
+    在现有数据库连接上创建记忆表结构。
+
+    Args:
+        conn: 数据库连接
+    """
+    storage_dir = Path(__file__).parent.parent / 'storage'
+
+    # 初始化记忆相关表
+    memory_schema_path = storage_dir / 'memory_schema.sql'
+    sql = load_schema_file(str(memory_schema_path))
+    conn.executescript(sql)
+    conn.commit()
+
+
 def initialize_memory_db(db_path: str) -> sqlite3.Connection:
     """
     初始化 memory.db 数据库
@@ -56,15 +74,7 @@ def initialize_memory_db(db_path: str) -> sqlite3.Connection:
         数据库连接对象
     """
     conn = sqlite3.connect(db_path)
-
-    storage_dir = Path(__file__).parent.parent / 'storage'
-
-    # 初始化记忆相关表
-    memory_schema_path = storage_dir / 'memory_schema.sql'
-    sql = load_schema_file(str(memory_schema_path))
-    conn.executescript(sql)
-    conn.commit()
-
+    initialize_memory_tables(conn)
     return conn
 
 

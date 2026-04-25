@@ -13,7 +13,7 @@ import os
 import re
 import sys
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -2298,12 +2298,18 @@ def main():
 诊断命令:
   --doctor               运行环境与配置体检
   --test-notification    发送测试通知到已配置渠道
+记忆生成命令:
+  memory daily           生成每日摘要（默认昨天）
+  memory weekly          生成每周摘要（默认上周）
 
 示例:
   python -m trendradar                    # 正常运行
   python -m trendradar --show-schedule    # 查看当前调度状态
   python -m trendradar --doctor           # 运行一键体检
   python -m trendradar --test-notification # 测试通知渠道连通性
+  python -m trendradar memory daily       # 生成昨天的每日摘要
+  python -m trendradar memory daily --date 2026-04-20  # 生成指定日期摘要
+  python -m trendradar memory weekly      # 生成上周的每周摘要
 """
     )
     parser.add_argument(
@@ -2322,6 +2328,34 @@ def main():
         help="发送测试通知到已配置渠道"
     )
 
+    # 添加子命令
+    subparsers = parser.add_subparsers(dest="command", help="子命令")
+
+    # memory 子命令
+    memory_parser = subparsers.add_parser("memory", help="记忆生成命令")
+    memory_subparsers = memory_parser.add_subparsers(dest="memory_command", help="记忆类型")
+
+    # memory daily 子命令
+    daily_parser = memory_subparsers.add_parser("daily", help="生成每日摘要")
+    daily_parser.add_argument(
+        "--date",
+        type=str,
+        help="目标日期 (格式: YYYY-MM-DD，默认为昨天)"
+    )
+
+    # memory weekly 子命令
+    weekly_parser = memory_subparsers.add_parser("weekly", help="生成每周摘要")
+    weekly_parser.add_argument(
+        "--start-date",
+        type=str,
+        help="开始日期 (格式: YYYY-MM-DD，默认为上周一)"
+    )
+    weekly_parser.add_argument(
+        "--end-date",
+        type=str,
+        help="结束日期 (格式: YYYY-MM-DD，默认为上周日)"
+    )
+
     args = parser.parse_args()
 
     debug_mode = False
@@ -2335,6 +2369,11 @@ def main():
 
         # 先加载配置
         config = load_config()
+
+        # 处理 memory 子命令
+        if args.command == "memory":
+            _handle_memory_commands(args, config)
+            return
 
         # 处理状态查看命令
         if args.show_schedule:
@@ -2380,6 +2419,128 @@ def main():
         print(f"❌ 程序运行错误: {e}")
         if debug_mode:
             raise
+
+
+def _handle_memory_commands(args, config: Dict) -> None:
+    """处理记忆生成命令"""
+    from trendradar.memory.scheduler import generate_daily_summary_sync, generate_weekly_digest_sync
+    from trendradar.context import AppContext
+
+    # 创建上下文获取数据库路径
+    ctx = AppContext(config)
+    db_path = ctx.db_path
+
+    # 获取 AI 配置
+    ai_config = config.get("AI", {})
+    if not ai_config:
+        print("❌ 未找到 AI 配置，请检查 config/config.yaml")
+        ctx.cleanup()
+        raise SystemExit(1)
+
+    try:
+        if args.memory_command == "daily":
+            # 生成每日摘要
+            date = None
+            if args.date:
+                try:
+                    date = datetime.strptime(args.date, "%Y-%m-%d")
+                except ValueError:
+                    print(f"❌ 日期格式错误: {args.date}，请使用 YYYY-MM-DD 格式")
+                    ctx.cleanup()
+                    raise SystemExit(1)
+
+            print("=" * 60)
+            print("生成每日摘要")
+            print("=" * 60)
+
+            target_date = date or (datetime.now() - timedelta(days=1))
+            print(f"\n目标日期: {target_date.strftime('%Y-%m-%d')}")
+            print("正在生成...")
+
+            memory = generate_daily_summary_sync(db_path, ai_config, date)
+
+            if memory:
+                print(f"\n✅ 成功生成每日摘要!")
+                print(f"\n📝 标题: {memory.title}")
+                print(f"🆔 ID: {memory.id}")
+                print(f"📊 元数据: 新闻数={memory.metadata.get('news_count', 0)}, "
+                      f"RSS数={memory.metadata.get('rss_count', 0)}")
+                print(f"\n内容预览:")
+                print("-" * 60)
+                content_preview = memory.content[:300] + "..." if len(memory.content) > 300 else memory.content
+                print(content_preview)
+                print("-" * 60)
+            else:
+                print(f"\n⚠️  未找到该日期的数据，无法生成摘要")
+
+        elif args.memory_command == "weekly":
+            # 生成每周摘要
+            start_date = None
+            end_date = None
+
+            if args.start_date:
+                try:
+                    start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+                except ValueError:
+                    print(f"❌ 开始日期格式错误: {args.start_date}，请使用 YYYY-MM-DD 格式")
+                    ctx.cleanup()
+                    raise SystemExit(1)
+
+            if args.end_date:
+                try:
+                    end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+                except ValueError:
+                    print(f"❌ 结束日期格式错误: {args.end_date}，请使用 YYYY-MM-DD 格式")
+                    ctx.cleanup()
+                    raise SystemExit(1)
+
+            print("=" * 60)
+            print("生成每周摘要")
+            print("=" * 60)
+
+            # 计算默认日期范围（上周一到上周日）
+            if start_date is None or end_date is None:
+                today = datetime.now()
+                days_since_monday = today.weekday()
+                last_monday = today - timedelta(days=days_since_monday + 7)
+                last_sunday = last_monday + timedelta(days=6)
+                start_date = start_date or last_monday
+                end_date = end_date or last_sunday
+
+            print(f"\n时间范围: {start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
+            print("正在生成...")
+
+            memory = generate_weekly_digest_sync(db_path, ai_config, start_date, end_date)
+
+            if memory:
+                print(f"\n✅ 成功生成每周摘要!")
+                print(f"\n📝 标题: {memory.title}")
+                print(f"🆔 ID: {memory.id}")
+                print(f"📊 元数据: 每日摘要数={memory.metadata.get('daily_count', 0)}")
+                print(f"\n内容预览:")
+                print("-" * 60)
+                content_preview = memory.content[:300] + "..." if len(memory.content) > 300 else memory.content
+                print(content_preview)
+                print("-" * 60)
+            else:
+                print(f"\n⚠️  未找到该时间范围的每日摘要，无法生成周摘要")
+                print("提示: 请先使用 'memory daily' 命令生成每日摘要")
+
+        else:
+            print("❌ 未知的记忆命令，请使用 'daily' 或 'weekly'")
+            ctx.cleanup()
+            raise SystemExit(1)
+
+        print("\n" + "=" * 60)
+
+    except Exception as e:
+        print(f"\n❌ 生成失败: {e}")
+        if config.get("DEBUG", False):
+            raise
+        ctx.cleanup()
+        raise SystemExit(1)
+    finally:
+        ctx.cleanup()
 
 
 def _handle_status_commands(config: Dict) -> None:

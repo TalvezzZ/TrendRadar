@@ -154,6 +154,24 @@ class AppContext:
         """AI 筛选是否启用（基于 filter.method 判断）"""
         return self.filter_method == "ai"
 
+    @property
+    def db_path(self) -> str:
+        """获取数据库路径"""
+        from trendradar.storage.local import LocalStorageBackend
+
+        storage_manager = self.get_storage_manager()
+        backend = storage_manager.get_backend()
+
+        if isinstance(backend, LocalStorageBackend):
+            today = self.format_date()
+            return str(backend._get_db_path(today))
+        else:
+            # 如果不是本地后端，返回默认路径
+            from pathlib import Path
+            data_dir = Path("data")
+            data_dir.mkdir(parents=True, exist_ok=True)
+            return str(data_dir / "trendradar.db")
+
     # === 时间操作 ===
 
     def get_time(self) -> datetime:

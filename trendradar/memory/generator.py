@@ -36,9 +36,27 @@ class MemoryGenerator:
             ai_config: AI 客户端配置
         """
         self.db_path = db_path
+
+        # 确保数据库表存在
+        self._ensure_schema()
+
         self.repository = MemoryRepository(db_path)
         self.ai_client = AIClient(ai_config)
         self.ai_storage = AIAnalysisStorage(db_path)
+
+    def _ensure_schema(self) -> None:
+        """确保数据库中存在所有必要的表"""
+        from trendradar.persistence.schema import (
+            initialize_ai_analysis_tables,
+            initialize_memory_tables
+        )
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            initialize_ai_analysis_tables(conn)
+            initialize_memory_tables(conn)
+        finally:
+            conn.close()
 
     def generate_daily_summary(self, date: datetime) -> Optional[Memory]:
         """
