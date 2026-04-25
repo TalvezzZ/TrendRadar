@@ -407,7 +407,7 @@ storage:
 ai:
   # LiteLLM 模型格式: provider/model_name
   # 示例:
-  #   - deepseek/deepseek-chat (DeepSeek)
+  #   - deepseek/deepseek-v4-flash (DeepSeek)
   #   - openai/gpt-4o (OpenAI)
   #   - gemini/gemini-2.5-flash (Google Gemini)
   #   - anthropic/claude-3-5-sonnet (Anthropic)

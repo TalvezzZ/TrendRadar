@@ -87,7 +87,7 @@ def db_path(tmp_path):
 def ai_client_config():
     """AI 客户端配置"""
     return {
-        "MODEL": "deepseek/deepseek-chat",
+        "MODEL": "deepseek/deepseek-v4-flash",
         "API_KEY": "test-key",
         "TEMPERATURE": 0.7,
         "MAX_TOKENS": 2000,
