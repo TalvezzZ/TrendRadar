@@ -441,6 +441,328 @@ class StorageManager:
                 return conn
         raise NotImplementedError("Only local backend supported for now")
 
+    # === OSS 数据库同步功能 ===
+
+    def sync_databases_to_s3(self) -> int:
+        """
+        上传本地数据库到 OSS
+
+        上传所有日期数据库和 memory.db 到远程存储
+
+        Returns:
+            成功上传的文件数量
+        """
+        # 检查是否配置了远程存储
+        if not self._has_remote_config():
+            print("[数据库同步] 未配置远程存储，跳过上传")
+            return 0
+
+        try:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            from botocore.exceptions import ClientError
+        except ImportError:
+            print("[数据库同步] 未安装 boto3，跳过上传")
+            print("[数据库同步] 安装方法: pip install boto3")
+            return 0
+
+        print("[数据库同步] 开始上传数据库到 OSS...")
+
+        # 创建 S3 客户端
+        try:
+            bucket_name = self.remote_config.get("bucket_name") or os.environ.get("S3_BUCKET_NAME")
+            access_key = self.remote_config.get("access_key_id") or os.environ.get("S3_ACCESS_KEY_ID")
+            secret_key = self.remote_config.get("secret_access_key") or os.environ.get("S3_SECRET_ACCESS_KEY")
+            endpoint = self.remote_config.get("endpoint_url") or os.environ.get("S3_ENDPOINT_URL")
+            region = self.remote_config.get("region") or os.environ.get("S3_REGION", "")
+
+            # 根据服务商选择签名版本
+            use_sigv2 = "aliyuncs.com" in endpoint.lower()
+            signature_version = 's3' if use_sigv2 else 's3v4'
+
+            s3_config = BotoConfig(
+                s3={"addressing_style": "virtual"},
+                signature_version=signature_version,
+            )
+
+            client_kwargs = {
+                "endpoint_url": endpoint,
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+                "config": s3_config,
+            }
+            if region:
+                client_kwargs["region_name"] = region
+
+            s3_client = boto3.client("s3", **client_kwargs)
+
+        except Exception as e:
+            print(f"[数据库同步] 初始化 S3 客户端失败: {e}")
+            return 0
+
+        uploaded_count = 0
+        data_dir = Path(self.data_dir)
+
+        # 1. 上传日期数据库文件
+        news_dir = data_dir / "news"
+        if news_dir.exists():
+            db_files = sorted(news_dir.glob("*.db"))
+            print(f"[数据库同步] 找到 {len(db_files)} 个日期数据库")
+
+            for db_file in db_files:
+                try:
+                    # 远程路径: databases/news/YYYY-MM-DD.db
+                    remote_key = f"databases/news/{db_file.name}"
+                    local_size = db_file.stat().st_size
+
+                    print(f"[数据库同步] 上传: {db_file.name} ({local_size / 1024:.1f} KB)")
+
+                    # 读取文件内容并上传
+                    with open(db_file, 'rb') as f:
+                        file_content = f.read()
+
+                    s3_client.put_object(
+                        Bucket=bucket_name,
+                        Key=remote_key,
+                        Body=file_content,
+                        ContentLength=local_size,
+                        ContentType='application/x-sqlite3',
+                    )
+
+                    uploaded_count += 1
+                    print(f"[数据库同步] 上传成功: {remote_key}")
+
+                except Exception as e:
+                    print(f"[数据库同步] 上传失败 ({db_file.name}): {e}")
+
+        # 2. 上传 memory.db
+        memory_db = data_dir / "memory.db"
+        if memory_db.exists():
+            try:
+                remote_key = "databases/memory.db"
+                local_size = memory_db.stat().st_size
+
+                print(f"[数据库同步] 上传: memory.db ({local_size / 1024:.1f} KB)")
+
+                with open(memory_db, 'rb') as f:
+                    file_content = f.read()
+
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=remote_key,
+                    Body=file_content,
+                    ContentLength=local_size,
+                    ContentType='application/x-sqlite3',
+                )
+
+                uploaded_count += 1
+                print(f"[数据库同步] 上传成功: {remote_key}")
+
+            except Exception as e:
+                print(f"[数据库同步] 上传失败 (memory.db): {e}")
+
+        print(f"[数据库同步] 上传完成，共上传 {uploaded_count} 个文件")
+        return uploaded_count
+
+    def sync_databases_from_s3(self) -> int:
+        """
+        从 OSS 下载数据库到本地
+
+        下载所有数据库文件，自动创建本地目录
+        如果远程没有数据库，静默跳过（第一次运行）
+
+        Returns:
+            成功下载的文件数量
+        """
+        # 检查是否配置了远程存储
+        if not self._has_remote_config():
+            print("[数据库同步] 未配置远程存储，跳过下载")
+            return 0
+
+        try:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            from botocore.exceptions import ClientError
+        except ImportError:
+            print("[数据库同步] 未安装 boto3，跳过下载")
+            return 0
+
+        print("[数据库同步] 开始从 OSS 下载数据库...")
+
+        # 创建 S3 客户端
+        try:
+            bucket_name = self.remote_config.get("bucket_name") or os.environ.get("S3_BUCKET_NAME")
+            access_key = self.remote_config.get("access_key_id") or os.environ.get("S3_ACCESS_KEY_ID")
+            secret_key = self.remote_config.get("secret_access_key") or os.environ.get("S3_SECRET_ACCESS_KEY")
+            endpoint = self.remote_config.get("endpoint_url") or os.environ.get("S3_ENDPOINT_URL")
+            region = self.remote_config.get("region") or os.environ.get("S3_REGION", "")
+
+            # 根据服务商选择签名版本
+            use_sigv2 = "aliyuncs.com" in endpoint.lower()
+            signature_version = 's3' if use_sigv2 else 's3v4'
+
+            s3_config = BotoConfig(
+                s3={"addressing_style": "virtual"},
+                signature_version=signature_version,
+            )
+
+            client_kwargs = {
+                "endpoint_url": endpoint,
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+                "config": s3_config,
+            }
+            if region:
+                client_kwargs["region_name"] = region
+
+            s3_client = boto3.client("s3", **client_kwargs)
+
+        except Exception as e:
+            print(f"[数据库同步] 初始化 S3 客户端失败: {e}")
+            return 0
+
+        downloaded_count = 0
+        data_dir = Path(self.data_dir)
+
+        try:
+            # 列出 databases/ 前缀下的所有对象
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix="databases/"
+            )
+
+            if 'Contents' not in response:
+                print("[数据库同步] 远程没有数据库文件（首次运行），跳过下载")
+                return 0
+
+            objects = response['Contents']
+            print(f"[数据库同步] 找到 {len(objects)} 个远程数据库文件")
+
+            for obj in objects:
+                key = obj['Key']
+                size = obj['Size']
+
+                # 跳过目录对象
+                if key.endswith('/'):
+                    continue
+
+                try:
+                    # 解析本地路径
+                    # databases/news/2025-12-21.db -> output/news/2025-12-21.db
+                    # databases/memory.db -> output/memory.db
+                    relative_path = key.replace('databases/', '', 1)
+                    local_path = data_dir / relative_path
+
+                    # 创建目录
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    print(f"[数据库同步] 下载: {key} ({size / 1024:.1f} KB)")
+
+                    # 使用 get_object 下载
+                    response = s3_client.get_object(Bucket=bucket_name, Key=key)
+                    with open(local_path, 'wb') as f:
+                        for chunk in response['Body'].iter_chunks(chunk_size=1024*1024):
+                            f.write(chunk)
+
+                    downloaded_count += 1
+                    print(f"[数据库同步] 下载成功: {local_path}")
+
+                except Exception as e:
+                    print(f"[数据库同步] 下载失败 ({key}): {e}")
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "NoSuchBucket":
+                print(f"[数据库同步] 存储桶不存在: {bucket_name}")
+            elif error_code == "AccessDenied":
+                print(f"[数据库同步] 访问被拒绝，请检查密钥权限")
+            else:
+                print(f"[数据库同步] 下载失败: {e}")
+        except Exception as e:
+            print(f"[数据库同步] 下载异常: {e}")
+
+        print(f"[数据库同步] 下载完成，共下载 {downloaded_count} 个文件")
+        return downloaded_count
+
+    def list_remote_databases(self) -> list:
+        """
+        列出 OSS 上的所有数据库文件
+
+        Returns:
+            文件列表，每项包含 (key, size, last_modified)
+        """
+        # 检查是否配置了远程存储
+        if not self._has_remote_config():
+            print("[数据库同步] 未配置远程存储")
+            return []
+
+        try:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            from botocore.exceptions import ClientError
+        except ImportError:
+            print("[数据库同步] 未安装 boto3")
+            return []
+
+        try:
+            bucket_name = self.remote_config.get("bucket_name") or os.environ.get("S3_BUCKET_NAME")
+            access_key = self.remote_config.get("access_key_id") or os.environ.get("S3_ACCESS_KEY_ID")
+            secret_key = self.remote_config.get("secret_access_key") or os.environ.get("S3_SECRET_ACCESS_KEY")
+            endpoint = self.remote_config.get("endpoint_url") or os.environ.get("S3_ENDPOINT_URL")
+            region = self.remote_config.get("region") or os.environ.get("S3_REGION", "")
+
+            # 根据服务商选择签名版本
+            use_sigv2 = "aliyuncs.com" in endpoint.lower()
+            signature_version = 's3' if use_sigv2 else 's3v4'
+
+            s3_config = BotoConfig(
+                s3={"addressing_style": "virtual"},
+                signature_version=signature_version,
+            )
+
+            client_kwargs = {
+                "endpoint_url": endpoint,
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+                "config": s3_config,
+            }
+            if region:
+                client_kwargs["region_name"] = region
+
+            s3_client = boto3.client("s3", **client_kwargs)
+
+            # 列出所有数据库文件
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix="databases/"
+            )
+
+            if 'Contents' not in response:
+                print("[数据库同步] 远程没有数据库文件")
+                return []
+
+            databases = []
+            for obj in response['Contents']:
+                key = obj['Key']
+                # 跳过目录对象
+                if key.endswith('/'):
+                    continue
+                databases.append({
+                    'key': key,
+                    'size': obj['Size'],
+                    'last_modified': obj['LastModified'].isoformat()
+                })
+
+            print(f"[数据库同步] 找到 {len(databases)} 个数据库文件:")
+            for db in databases:
+                print(f"  - {db['key']} ({db['size'] / 1024:.1f} KB, {db['last_modified']})")
+
+            return databases
+
+        except Exception as e:
+            print(f"[数据库同步] 列出数据库失败: {e}")
+            return []
+
 
 
 def get_storage_manager(

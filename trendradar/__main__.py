@@ -1854,9 +1854,34 @@ class NewsAnalyzer:
 
         return html_file
 
+    def _sync_databases_from_remote(self) -> None:
+        """从远程存储下载数据库到本地（启动前同步）"""
+        try:
+            downloaded = self.storage_manager.sync_databases_from_s3()
+            if downloaded > 0:
+                print(f"[数据库同步] 已从远程下载 {downloaded} 个数据库文件")
+        except Exception as e:
+            print(f"[数据库同步] 从远程下载失败: {e}")
+            if self.ctx.config.get("DEBUG", False):
+                raise
+
+    def _sync_databases_to_remote(self) -> None:
+        """上传数据库到远程存储（运行后同步）"""
+        try:
+            uploaded = self.storage_manager.sync_databases_to_s3()
+            if uploaded > 0:
+                print(f"[数据库同步] 已上传 {uploaded} 个数据库文件到远程")
+        except Exception as e:
+            print(f"[数据库同步] 上传到远程失败: {e}")
+            if self.ctx.config.get("DEBUG", False):
+                raise
+
     def run(self) -> None:
         """执行分析流程"""
         try:
+            # 从 OSS 下载数据库到本地（启动前同步）
+            self._sync_databases_from_remote()
+
             self._initialize_and_check_config()
 
             mode_strategy = self._get_mode_strategy()
@@ -1873,6 +1898,9 @@ class NewsAnalyzer:
                 rss_items=rss_items, rss_new_items=rss_new_items,
                 raw_rss_items=raw_rss_items, rss_new_urls=rss_new_urls
             )
+
+            # 上传数据库到 OSS（运行后同步）
+            self._sync_databases_to_remote()
 
         except Exception as e:
             print(f"分析流程执行出错: {e}")
