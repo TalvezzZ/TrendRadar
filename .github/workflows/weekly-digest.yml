@@ -1,0 +1,103 @@
+name: Generate Weekly Digest
+
+on:
+  schedule:
+    # 每周一北京时间 23:30 执行（UTC 15:30）
+    - cron: "30 15 * * 1"
+
+  workflow_dispatch:
+
+concurrency:
+  group: digest-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Download databases from OSS
+        env:
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+        run: |
+          cat > sync_download.py << 'EOF'
+          import os
+          from trendradar.core import load_config
+          from trendradar.storage import get_storage_manager
+
+          config = load_config()
+          storage = get_storage_manager(
+              backend_type="auto",
+              data_dir="output",
+              remote_config={
+                  "bucket_name": os.environ.get("S3_BUCKET_NAME"),
+                  "access_key_id": os.environ.get("S3_ACCESS_KEY_ID"),
+                  "secret_access_key": os.environ.get("S3_SECRET_ACCESS_KEY"),
+                  "endpoint_url": os.environ.get("S3_ENDPOINT_URL"),
+                  "region": os.environ.get("S3_REGION")
+              }
+          )
+          storage.sync_databases_from_s3()
+          EOF
+          uv run python sync_download.py
+
+      - name: Generate weekly digest
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          AI_API_BASE: ${{ secrets.AI_API_BASE }}
+        run: |
+          uv run python -m trendradar memory weekly
+
+      - name: Upload databases to OSS
+        env:
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+        run: |
+          cat > sync_upload.py << 'EOF'
+          import os
+          from trendradar.core import load_config
+          from trendradar.storage import get_storage_manager
+
+          config = load_config()
+          storage = get_storage_manager(
+              backend_type="auto",
+              data_dir="output",
+              remote_config={
+                  "bucket_name": os.environ.get("S3_BUCKET_NAME"),
+                  "access_key_id": os.environ.get("S3_ACCESS_KEY_ID"),
+                  "secret_access_key": os.environ.get("S3_SECRET_ACCESS_KEY"),
+                  "endpoint_url": os.environ.get("S3_ENDPOINT_URL"),
+                  "region": os.environ.get("S3_REGION")
+              }
+          )
+          storage.sync_databases_to_s3()
+          EOF
+          uv run python sync_upload.py
