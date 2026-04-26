@@ -515,7 +515,25 @@ class StorageManager:
                     remote_key = f"databases/news/{db_file.name}"
                     local_size = db_file.stat().st_size
 
-                    print(f"[数据库同步] 上传: {db_file.name} ({local_size / 1024:.1f} KB)")
+                    # 检查远程文件是否存在且大小相同（增量同步）
+                    skip_upload = False
+                    try:
+                        remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
+                        remote_size = remote_obj['ContentLength']
+
+                        if remote_size == local_size:
+                            print(f"[数据库同步] 跳过: {db_file.name} (已存在，大小相同)")
+                            skip_upload = True
+                        else:
+                            print(f"[数据库同步] 更新: {db_file.name} ({local_size / 1024:.1f} KB, 远程: {remote_size / 1024:.1f} KB)")
+                    except ClientError as e:
+                        if e.response['Error']['Code'] == '404':
+                            print(f"[数据库同步] 上传: {db_file.name} ({local_size / 1024:.1f} KB)")
+                        else:
+                            raise
+
+                    if skip_upload:
+                        continue
 
                     # 读取文件内容并上传
                     with open(db_file, 'rb') as f:
@@ -542,21 +560,37 @@ class StorageManager:
                 remote_key = "databases/memory.db"
                 local_size = memory_db.stat().st_size
 
-                print(f"[数据库同步] 上传: memory.db ({local_size / 1024:.1f} KB)")
+                # 检查远程文件是否存在且大小相同（增量同步）
+                skip_upload = False
+                try:
+                    remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
+                    remote_size = remote_obj['ContentLength']
 
-                with open(memory_db, 'rb') as f:
-                    file_content = f.read()
+                    if remote_size == local_size:
+                        print(f"[数据库同步] 跳过: memory.db (已存在，大小相同)")
+                        skip_upload = True
+                    else:
+                        print(f"[数据库同步] 更新: memory.db ({local_size / 1024:.1f} KB, 远程: {remote_size / 1024:.1f} KB)")
+                except ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        print(f"[数据库同步] 上传: memory.db ({local_size / 1024:.1f} KB)")
+                    else:
+                        raise
 
-                s3_client.put_object(
-                    Bucket=bucket_name,
-                    Key=remote_key,
-                    Body=file_content,
-                    ContentLength=local_size,
-                    ContentType='application/x-sqlite3',
-                )
+                if not skip_upload:
+                    with open(memory_db, 'rb') as f:
+                        file_content = f.read()
 
-                uploaded_count += 1
-                print(f"[数据库同步] 上传成功: {remote_key}")
+                    s3_client.put_object(
+                        Bucket=bucket_name,
+                        Key=remote_key,
+                        Body=file_content,
+                        ContentLength=local_size,
+                        ContentType='application/x-sqlite3',
+                    )
+
+                    uploaded_count += 1
+                    print(f"[数据库同步] 上传成功: {remote_key}")
 
             except Exception as e:
                 print(f"[数据库同步] 上传失败 (memory.db): {e}")
