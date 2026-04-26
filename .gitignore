@@ -45,5 +45,10 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
+# Environment variables
+.env
+.env.local
+.env.*.local
+
 # Logs
 *.log

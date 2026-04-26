@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
 import requests
+from dotenv import load_dotenv
+
+# 加载 .env 文件中的环境变量
+load_dotenv()
 
 from trendradar.context import AppContext
 from trendradar import __version__

@@ -8,6 +8,10 @@ TrendRadar MCP Server - FastMCP 2.0 实现
 import asyncio
 import json
 from typing import List, Optional, Dict, Union
+from dotenv import load_dotenv
+
+# 加载 .env 文件中的环境变量
+load_dotenv()
 
 from fastmcp import FastMCP
 
