@@ -2513,12 +2513,28 @@ def _handle_memory_commands(args, config: Dict) -> None:
     ctx = AppContext(config)
     db_path = ctx.db_path
 
+    # 获取存储管理器用于数据同步
+    storage_manager = ctx.get_storage_manager()
+
+    # 从 OSS 下载数据库（确保本地/Docker 环境也能正常使用）
+    try:
+        downloaded = storage_manager.sync_databases_from_s3()
+        if downloaded > 0:
+            print(f"[数据库同步] 已从远程下载 {downloaded} 个数据库文件")
+    except Exception as e:
+        print(f"[数据库同步] 从远程下载失败: {e}")
+        if config.get("DEBUG", False):
+            raise
+
     # 获取 AI 配置
     ai_config = config.get("AI", {})
     if not ai_config:
         print("❌ 未找到 AI 配置，请检查 config/config.yaml")
         ctx.cleanup()
         raise SystemExit(1)
+
+    # 标记是否成功生成（用于决定是否上传）
+    generation_success = False
 
     try:
         if args.memory_command == "daily":
@@ -2543,6 +2559,7 @@ def _handle_memory_commands(args, config: Dict) -> None:
             memory = generate_daily_summary_sync(db_path, ai_config, date)
 
             if memory:
+                generation_success = True  # 标记生成成功，触发上传
                 print(f"\n✅ 成功生成每日摘要!")
                 print(f"\n📝 标题: {memory.title}")
                 print(f"🆔 ID: {memory.id}")
@@ -2596,6 +2613,7 @@ def _handle_memory_commands(args, config: Dict) -> None:
             memory = generate_weekly_digest_sync(db_path, ai_config, start_date, end_date)
 
             if memory:
+                generation_success = True  # 标记生成成功，触发上传
                 print(f"\n✅ 成功生成每周摘要!")
                 print(f"\n📝 标题: {memory.title}")
                 print(f"🆔 ID: {memory.id}")
@@ -2623,6 +2641,17 @@ def _handle_memory_commands(args, config: Dict) -> None:
         ctx.cleanup()
         raise SystemExit(1)
     finally:
+        # 如果成功生成了摘要，上传到 OSS
+        if generation_success:
+            try:
+                uploaded = storage_manager.sync_databases_to_s3()
+                if uploaded > 0:
+                    print(f"[数据库同步] 已上传 {uploaded} 个数据库文件到远程")
+            except Exception as e:
+                print(f"[数据库同步] 上传到远程失败: {e}")
+                if config.get("DEBUG", False):
+                    raise
+
         ctx.cleanup()
 
 
