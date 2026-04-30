@@ -66,6 +66,26 @@ def _render_memory_enhancement(memory_enhancement: Optional[Dict], original_cont
         return ""
 
 
+def _render_finance_enhancement(finance_enhancement: Optional[Dict], original_content: str = "") -> str:
+    """渲染金融增强内容"""
+    if not finance_enhancement:
+        return ""
+
+    try:
+        from trendradar.finance.enhancer import FinanceEnhancer
+        enhancer = FinanceEnhancer()
+        # 使用 enhancer 的 format 方法来生成金融增强部分
+        # 只返回增强部分，不包含原始内容
+        full_content = enhancer.format_enhanced_notification(original_content, finance_enhancement)
+        # 提取增强部分（去掉原始内容）
+        if original_content and full_content.startswith(original_content):
+            return full_content[len(original_content):]
+        return full_content
+    except Exception as e:
+        print(f"[金融跟踪] 格式化失败: {e}")
+        return ""
+
+
 # === SMTP 邮件配置 ===
 SMTP_CONFIGS = {
     # Gmail（使用 STARTTLS）
@@ -113,9 +133,10 @@ def send_to_feishu(
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
     memory_enhancement: Optional[Dict] = None,
+    finance_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强）
+    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强+金融跟踪）
 
     Args:
         webhook_url: 飞书 Webhook URL
@@ -132,6 +153,7 @@ def send_to_feishu(
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
         memory_enhancement: 记忆增强数据（可选）
+        finance_enhancement: 金融跟踪数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -163,6 +185,9 @@ def send_to_feishu(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("feishu")
     batches = split_content_func(
@@ -177,6 +202,7 @@ def send_to_feishu(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -313,6 +339,9 @@ def send_to_dingtalk(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("dingtalk")
     batches = split_content_func(
@@ -327,6 +356,7 @@ def send_to_dingtalk(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -460,6 +490,9 @@ def send_to_wework(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size(header_format_type)
     batches = split_content_func(
@@ -470,6 +503,7 @@ def send_to_wework(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -594,6 +628,9 @@ def send_to_telegram(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("telegram")
     batches = split_content_func(
@@ -604,6 +641,7 @@ def send_to_telegram(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -907,6 +945,9 @@ def send_to_ntfy(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("ntfy")
     batches = split_content_func(
@@ -917,6 +958,7 @@ def send_to_ntfy(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -1098,6 +1140,9 @@ def send_to_bark(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("bark")
     batches = split_content_func(
@@ -1108,6 +1153,7 @@ def send_to_bark(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -1265,6 +1311,9 @@ def send_to_slack(
     # 渲染记忆增强内容（如果有）
     memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
 
+    # 渲染金融增强内容（如果有）
+    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("slack")
     batches = split_content_func(
@@ -1275,6 +1324,7 @@ def send_to_slack(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 
@@ -1401,6 +1451,7 @@ def send_to_generic_webhook(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        finance_content=finance_content,
         memory_content=memory_content,
     )
 

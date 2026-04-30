@@ -1,0 +1,363 @@
+# ═══════════════════════════════════════════════════════════════
+#                   TrendRadar 金融跟踪映射配置
+#                        Finance Mapping Config
+# ═══════════════════════════════════════════════════════════════
+#
+# 🎯 功能说明
+# 定义热点关键词到股票/基金的映射关系
+# 当新闻推送包含这些关键词时，自动显示相关标的的涨跌情况
+#
+# 📝 配置格式
+# mappings:
+#   关键词:
+#     - symbol: "代码"        # 标的代码
+#       type: "类型"          # stock | etf | fund
+#       market: "市场"        # A股 | 美股 | 港股
+#       name: "名称"          # 显示名称
+#       priority: 1           # 优先级（数字越小越靠前）
+#
+# 💡 提示
+# - priority 决定推送中的显示顺序
+# - 每个关键词可以映射多个标的
+# - type 支持：stock（股票）、etf（场内基金）、fund（开放式基金）
+# - 开放式基金数据为 T-1（前一交易日）
+#
+# ═══════════════════════════════════════════════════════════════
+
+mappings:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 新能源 / 新能源车
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  新能源:
+    - symbol: "300750"
+      type: "stock"
+      market: "A股"
+      name: "宁德时代"
+      priority: 1
+
+    - symbol: "159915"
+      type: "etf"
+      market: "A股"
+      name: "新能源车ETF"
+      priority: 2
+
+    - symbol: "005827"
+      type: "fund"
+      market: "A股"
+      name: "易方达蓝筹精选"
+      priority: 3
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 芯片 / 半导体
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  芯片:
+    - symbol: "688981"
+      type: "stock"
+      market: "A股"
+      name: "中芯国际"
+      priority: 1
+
+    - symbol: "512480"
+      type: "etf"
+      market: "A股"
+      name: "半导体50ETF"
+      priority: 2
+
+  半导体:
+    - symbol: "512480"
+      type: "etf"
+      market: "A股"
+      name: "半导体50ETF"
+      priority: 1
+
+    - symbol: "688981"
+      type: "stock"
+      market: "A股"
+      name: "中芯国际"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # AI / 人工智能
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  人工智能:
+    - symbol: "NVDA"
+      type: "stock"
+      market: "美股"
+      name: "NVIDIA"
+      priority: 1
+
+    - symbol: "515070"
+      type: "etf"
+      market: "A股"
+      name: "华夏科技ETF"
+      priority: 2
+
+  AI:
+    - symbol: "NVDA"
+      type: "stock"
+      market: "美股"
+      name: "NVIDIA"
+      priority: 1
+
+    - symbol: "515070"
+      type: "etf"
+      market: "A股"
+      name: "华夏科技ETF"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 医药 / 医疗
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  医药:
+    - symbol: "512010"
+      type: "etf"
+      market: "A股"
+      name: "医药ETF"
+      priority: 1
+
+    - symbol: "600276"
+      type: "stock"
+      market: "A股"
+      name: "恒瑞医药"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 消费 / 白酒
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  白酒:
+    - symbol: "600519"
+      type: "stock"
+      market: "A股"
+      name: "贵州茅台"
+      priority: 1
+
+    - symbol: "512690"
+      type: "etf"
+      market: "A股"
+      name: "酒ETF"
+      priority: 2
+
+  消费:
+    - symbol: "159928"
+      type: "etf"
+      market: "A股"
+      name: "消费ETF"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 房地产
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  房地产:
+    - symbol: "512200"
+      type: "etf"
+      market: "A股"
+      name: "地产ETF"
+      priority: 1
+
+    - symbol: "000002"
+      type: "stock"
+      market: "A股"
+      name: "万科A"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 金融 / 银行 / 保险
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  银行:
+    - symbol: "512800"
+      type: "etf"
+      market: "A股"
+      name: "银行ETF"
+      priority: 1
+
+    - symbol: "601398"
+      type: "stock"
+      market: "A股"
+      name: "工商银行"
+      priority: 2
+
+  保险:
+    - symbol: "512880"
+      type: "etf"
+      market: "A股"
+      name: "证券保险ETF"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 军工
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  军工:
+    - symbol: "512660"
+      type: "etf"
+      market: "A股"
+      name: "军工ETF"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 5G / 通信
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5G:
+    - symbol: "515050"
+      type: "etf"
+      market: "A股"
+      name: "5GETF"
+      priority: 1
+
+  通信:
+    - symbol: "515050"
+      type: "etf"
+      market: "A股"
+      name: "5GETF"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 光伏
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  光伏:
+    - symbol: "516160"
+      type: "etf"
+      market: "A股"
+      name: "光伏50ETF"
+      priority: 1
+
+    - symbol: "601012"
+      type: "stock"
+      market: "A股"
+      name: "隆基绿能"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 锂电池
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  锂电池:
+    - symbol: "159755"
+      type: "etf"
+      market: "A股"
+      name: "电池ETF"
+      priority: 1
+
+    - symbol: "300750"
+      type: "stock"
+      market: "A股"
+      name: "宁德时代"
+      priority: 2
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 互联网 / 科技
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  互联网:
+    - symbol: "513050"
+      type: "etf"
+      market: "A股"
+      name: "中概互联"
+      priority: 1
+
+  科技:
+    - symbol: "515000"
+      type: "etf"
+      market: "A股"
+      name: "科技ETF"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 美股科技巨头
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  苹果:
+    - symbol: "AAPL"
+      type: "stock"
+      market: "美股"
+      name: "Apple"
+      priority: 1
+
+  特斯拉:
+    - symbol: "TSLA"
+      type: "stock"
+      market: "美股"
+      name: "Tesla"
+      priority: 1
+
+  微软:
+    - symbol: "MSFT"
+      type: "stock"
+      market: "美股"
+      name: "Microsoft"
+      priority: 1
+
+  谷歌:
+    - symbol: "GOOGL"
+      type: "stock"
+      market: "美股"
+      name: "Google"
+      priority: 1
+
+  亚马逊:
+    - symbol: "AMZN"
+      type: "stock"
+      market: "美股"
+      name: "Amazon"
+      priority: 1
+
+  Meta:
+    - symbol: "META"
+      type: "stock"
+      market: "美股"
+      name: "Meta"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 国内科技公司
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  华为:
+    - symbol: "515070"
+      type: "etf"
+      market: "A股"
+      name: "华夏科技ETF"
+      priority: 1
+
+  比亚迪:
+    - symbol: "002594"
+      type: "stock"
+      market: "A股"
+      name: "比亚迪"
+      priority: 1
+
+  小米:
+    - symbol: "01810"
+      type: "stock"
+      market: "港股"
+      name: "小米集团"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 加密货币相关
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  比特币:
+    - symbol: "MSTR"
+      type: "stock"
+      market: "美股"
+      name: "MicroStrategy"
+      priority: 1
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 大盘指数相关
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  沪深300:
+    - symbol: "510300"
+      type: "etf"
+      market: "A股"
+      name: "沪深300ETF"
+      priority: 1
+
+  科创50:
+    - symbol: "588000"
+      type: "etf"
+      market: "A股"
+      name: "科创50ETF"
+      priority: 1
+
+  创业板:
+    - symbol: "159915"
+      type: "etf"
+      market: "A股"
+      name: "创业板ETF"
+      priority: 1

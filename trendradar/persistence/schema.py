@@ -60,6 +60,13 @@ def initialize_memory_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(sql)
     conn.commit()
 
+    # 初始化金融跟踪表
+    finance_schema_path = storage_dir / 'finance_schema.sql'
+    if finance_schema_path.exists():
+        sql = load_schema_file(str(finance_schema_path))
+        conn.executescript(sql)
+        conn.commit()
+
 
 def initialize_memory_db(db_path: str) -> sqlite3.Connection:
     """

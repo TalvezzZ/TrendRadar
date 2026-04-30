@@ -1157,6 +1157,29 @@ class NewsAnalyzer:
                 except Exception as e:
                     print(f"[记忆] ⚠️ 增强失败: {e}")
 
+            # 💹 金融增强：为推送添加股票/基金涨跌情况
+            finance_enhancement = None
+            if cfg.get("FINANCE", {}).get("enabled", False):
+                try:
+                    from trendradar.finance.enhancer import FinanceEnhancer
+
+                    # 获取匹配的关键词
+                    matched_keywords = ai_result.matched_keywords if ai_result else []
+
+                    if matched_keywords:
+                        finance_enhancer = FinanceEnhancer(
+                            data_dir=cfg.get("STORAGE", {}).get("DATA_DIR", "output"),
+                            config=cfg.get("FINANCE", {})
+                        )
+                        finance_enhancement = finance_enhancer.enhance_news_push(matched_keywords)
+                        total_tracked = finance_enhancement.get("stats", {}).get("total_tracked", 0)
+                        if total_tracked > 0:
+                            print(f"[金融] ✅ 已跟踪 {total_tracked} 个标的")
+                        else:
+                            print(f"[金融] ℹ️  没有匹配的标的")
+                except Exception as e:
+                    print(f"[金融] ⚠️ 增强失败: {e}")
+
             # 是否发送版本更新信息
             update_info_to_send = self.update_info if cfg["SHOW_VERSION_UPDATE"] else None
 
@@ -1176,6 +1199,7 @@ class NewsAnalyzer:
                 standalone_data=standalone_data,
                 skip_translation=True,
                 memory_enhancement=memory_enhancement,  # 🧠 传递记忆增强
+                finance_enhancement=finance_enhancement,  # 💹 传递金融增强
             )
 
             if not results:
