@@ -2333,6 +2333,8 @@ def main():
 记忆生成命令:
   memory daily           生成每日摘要（默认昨天）
   memory weekly          生成每周摘要（默认上周）
+可视化命令:
+  dashboard              生成可视化仪表板
 
 示例:
   python -m trendradar                    # 正常运行
@@ -2342,6 +2344,7 @@ def main():
   python -m trendradar memory daily       # 生成昨天的每日摘要
   python -m trendradar memory daily --date 2026-04-20  # 生成指定日期摘要
   python -m trendradar memory weekly      # 生成上周的每周摘要
+  python -m trendradar dashboard --open   # 生成可视化仪表板并打开
 """
     )
     parser.add_argument(
@@ -2388,6 +2391,19 @@ def main():
         help="结束日期 (格式: YYYY-MM-DD，默认为上周日)"
     )
 
+    # dashboard 子命令
+    dashboard_parser = subparsers.add_parser("dashboard", help="生成可视化仪表板")
+    dashboard_parser.add_argument(
+        "--output",
+        type=str,
+        help="输出路径 (默认: output/html/dashboard.html)"
+    )
+    dashboard_parser.add_argument(
+        "--open",
+        action="store_true",
+        help="生成后自动在浏览器打开"
+    )
+
     args = parser.parse_args()
 
     debug_mode = False
@@ -2405,6 +2421,11 @@ def main():
         # 处理 memory 子命令
         if args.command == "memory":
             _handle_memory_commands(args, config)
+            return
+
+        # 处理 dashboard 子命令
+        if args.command == "dashboard":
+            _handle_dashboard_command(args, config)
             return
 
         # 处理状态查看命令
@@ -2570,6 +2591,45 @@ def _handle_memory_commands(args, config: Dict) -> None:
         if config.get("DEBUG", False):
             raise
         ctx.cleanup()
+        raise SystemExit(1)
+    finally:
+        ctx.cleanup()
+
+
+def _handle_dashboard_command(args, config: Dict) -> None:
+    """处理可视化仪表板命令"""
+    from trendradar.visualization import DashboardGenerator
+    from trendradar.context import AppContext
+
+    print("=" * 60)
+    print("生成可视化仪表板")
+    print("=" * 60)
+
+    # 创建上下文
+    ctx = AppContext(config)
+
+    try:
+        # 获取数据目录
+        data_dir = config.get("STORAGE", {}).get("DATA_DIR", "output")
+
+        # 创建仪表板生成器
+        generator = DashboardGenerator(data_dir=data_dir)
+
+        # 生成仪表板
+        output_path = generator.generate(output_path=args.output)
+
+        print(f"\n✅ 仪表板已生成: {output_path}")
+
+        # 如果需要，打开浏览器
+        if args.open:
+            import webbrowser
+            webbrowser.open(f"file://{Path(output_path).absolute()}")
+            print("📊 已在浏览器中打开")
+
+    except Exception as e:
+        print(f"\n❌ 生成失败: {e}")
+        import traceback
+        traceback.print_exc()
         raise SystemExit(1)
     finally:
         ctx.cleanup()
