@@ -46,6 +46,26 @@ def _render_ai_analysis(ai_analysis: Any, channel: str) -> str:
         return ""
 
 
+def _render_memory_enhancement(memory_enhancement: Optional[Dict], original_content: str = "") -> str:
+    """渲染记忆增强内容"""
+    if not memory_enhancement:
+        return ""
+
+    try:
+        from trendradar.memory.enhancer import MemoryEnhancer
+        enhancer = MemoryEnhancer()
+        # 使用 enhancer 的 format 方法来生成记忆增强部分
+        # 只返回增强部分，不包含原始内容
+        full_content = enhancer.format_enhanced_notification(original_content, memory_enhancement)
+        # 提取增强部分（去掉原始内容）
+        if original_content and full_content.startswith(original_content):
+            return full_content[len(original_content):]
+        return full_content
+    except Exception as e:
+        print(f"[记忆增强] 格式化失败: {e}")
+        return ""
+
+
 # === SMTP 邮件配置 ===
 SMTP_CONFIGS = {
     # Gmail（使用 STARTTLS）
@@ -92,9 +112,10 @@ def send_to_feishu(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
+    memory_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区）
+    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强）
 
     Args:
         webhook_url: 飞书 Webhook URL
@@ -110,6 +131,7 @@ def send_to_feishu(
         get_time_func: 获取当前时间的函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
+        memory_enhancement: 记忆增强数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -138,6 +160,9 @@ def send_to_feishu(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("feishu")
     batches = split_content_func(
@@ -152,6 +177,7 @@ def send_to_feishu(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -237,9 +263,10 @@ def send_to_dingtalk(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
+    memory_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到钉钉（支持分批发送，支持热榜+RSS合并+独立展示区）
+    发送到钉钉（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强）
 
     Args:
         webhook_url: 钉钉 Webhook URL
@@ -254,6 +281,7 @@ def send_to_dingtalk(
         split_content_func: 内容分批函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
+        memory_enhancement: 记忆增强数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -282,6 +310,9 @@ def send_to_dingtalk(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("dingtalk")
     batches = split_content_func(
@@ -296,6 +327,7 @@ def send_to_dingtalk(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -366,9 +398,10 @@ def send_to_wework(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
+    memory_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到企业微信（支持分批发送，支持 markdown 和 text 两种格式，支持热榜+RSS合并+独立展示区）
+    发送到企业微信（支持分批发送，支持 markdown 和 text 两种格式，支持热榜+RSS合并+独立展示区+记忆增强）
 
     Args:
         webhook_url: 企业微信 Webhook URL
@@ -384,6 +417,7 @@ def send_to_wework(
         split_content_func: 内容分批函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
+        memory_enhancement: 记忆增强数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -423,6 +457,9 @@ def send_to_wework(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size(header_format_type)
     batches = split_content_func(
@@ -433,6 +470,7 @@ def send_to_wework(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -505,7 +543,7 @@ def send_to_telegram(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-) -> bool:
+    memory_enhancement: Optional[Dict] = None,) -> bool:
     """
     发送到 Telegram（支持分批发送，支持热榜+RSS合并+独立展示区）
 
@@ -553,6 +591,9 @@ def send_to_telegram(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("telegram")
     batches = split_content_func(
@@ -563,6 +604,7 @@ def send_to_telegram(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -791,7 +833,7 @@ def send_to_ntfy(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-) -> bool:
+    memory_enhancement: Optional[Dict] = None,) -> bool:
     """
     发送到 ntfy（支持分批发送，严格遵守4KB限制，支持热榜+RSS合并+独立展示区）
 
@@ -862,6 +904,9 @@ def send_to_ntfy(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("ntfy")
     batches = split_content_func(
@@ -872,6 +917,7 @@ def send_to_ntfy(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -993,7 +1039,7 @@ def send_to_bark(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-) -> bool:
+    memory_enhancement: Optional[Dict] = None,) -> bool:
     """
     发送到 Bark（支持分批发送，使用 markdown 格式，支持热榜+RSS合并+独立展示区）
 
@@ -1049,6 +1095,9 @@ def send_to_bark(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("bark")
     batches = split_content_func(
@@ -1059,6 +1108,7 @@ def send_to_bark(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -1167,7 +1217,7 @@ def send_to_slack(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-) -> bool:
+    memory_enhancement: Optional[Dict] = None,) -> bool:
     """
     发送到 Slack（支持分批发送，使用 mrkdwn 格式，支持热榜+RSS合并+独立展示区）
 
@@ -1212,6 +1262,9 @@ def send_to_slack(
                 "ai_mode": getattr(ai_analysis, "ai_mode", ""),
             }
 
+    # 渲染记忆增强内容（如果有）
+    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
+
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("slack")
     batches = split_content_func(
@@ -1222,6 +1275,7 @@ def send_to_slack(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -1286,7 +1340,7 @@ def send_to_generic_webhook(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-) -> bool:
+    memory_enhancement: Optional[Dict] = None,) -> bool:
     """
     发送到通用 Webhook（支持分批发送，支持自定义 JSON 模板，支持热榜+RSS合并+独立展示区）
 
@@ -1347,6 +1401,7 @@ def send_to_generic_webhook(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
+        memory_content=memory_content,
     )
 
     # 统一添加批次头部

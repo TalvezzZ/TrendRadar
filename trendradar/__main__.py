@@ -1128,6 +1128,35 @@ class NewsAnalyzer:
             # 准备报告数据
             report_data = self.ctx.prepare_report(stats, failed_ids, new_titles, id_to_name, mode, frequency_file=self.frequency_file)
 
+            # 🧠 记忆增强：为推送添加历史上下文
+            memory_enhancement = None
+            if cfg.get("MEMORY", {}).get("ENHANCE_NOTIFICATION", True):
+                try:
+                    from trendradar.memory.enhancer import MemoryEnhancer
+
+                    # 收集匹配的新闻和关键词
+                    matched_news = []
+                    for stat in (stats or []):
+                        for title_info in stat.get("titles", []):
+                            matched_news.append({
+                                "title": title_info if isinstance(title_info, str) else title_info.get("title", ""),
+                                "platform": stat.get("platform", "")
+                            })
+
+                    # 获取匹配的关键词
+                    matched_keywords = ai_result.matched_keywords if ai_result else []
+
+                    # 生成增强信息
+                    if matched_news or matched_keywords:
+                        enhancer = MemoryEnhancer(data_dir=cfg.get("STORAGE", {}).get("DATA_DIR", "output"))
+                        memory_enhancement = enhancer.enhance_news_push(
+                            news_items=matched_news,
+                            matched_keywords=matched_keywords
+                        )
+                        print(f"[记忆] ✅ 已增强推送内容（{len(memory_enhancement.get('news_with_context', []))} 条上下文）")
+                except Exception as e:
+                    print(f"[记忆] ⚠️ 增强失败: {e}")
+
             # 是否发送版本更新信息
             update_info_to_send = self.update_info if cfg["SHOW_VERSION_UPDATE"] else None
 
@@ -1146,6 +1175,7 @@ class NewsAnalyzer:
                 ai_analysis=ai_result,
                 standalone_data=standalone_data,
                 skip_translation=True,
+                memory_enhancement=memory_enhancement,  # 🧠 传递记忆增强
             )
 
             if not results:

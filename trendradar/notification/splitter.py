@@ -152,13 +152,15 @@ def split_content_into_batches(
     ai_stats: Optional[Dict] = None,
     report_type: str = "热点分析报告",
     show_new_section: bool = True,
+    memory_content: Optional[str] = None,
 ) -> List[str]:
-    """分批处理消息内容，确保词组标题+至少第一条新闻的完整性（支持热榜+RSS合并+AI分析+独立展示区）
+    """分批处理消息内容，确保词组标题+至少第一条新闻的完整性（支持热榜+RSS合并+AI分析+独立展示区+记忆增强）
 
     热榜统计与RSS统计并列显示，热榜新增与RSS新增并列显示。
     region_order 控制各区域的显示顺序。
     AI分析内容根据 region_order 中的位置显示。
     独立展示区根据 region_order 中的位置显示。
+    记忆增强内容附加在最后。
 
     Args:
         report_data: 报告数据字典，包含 stats, new_titles, failed_ids, total_new_count
@@ -177,6 +179,7 @@ def split_content_into_batches(
         ai_content: AI 分析内容（已渲染的字符串，可选）
         standalone_data: 独立展示区数据（可选），包含 platforms 和 rss_feeds 列表
         ai_stats: AI 分析统计数据（可选），包含 total_news, analyzed_news, max_news_limit 等
+        memory_content: 记忆增强内容（已渲染的字符串，可选）
 
     Returns:
         分批后的消息内容列表
@@ -955,6 +958,50 @@ def split_content_into_batches(
                 current_batch_has_content = True
             else:
                 current_batch = test_content
+                current_batch_has_content = True
+
+    # 处理记忆增强内容（总是在最后）
+    if memory_content:
+        memory_separator = ""
+        if current_batch_has_content:
+            if format_type == "feishu":
+                memory_separator = f"\n{feishu_separator}\n\n"
+            elif format_type == "dingtalk":
+                memory_separator = "\n---\n\n"
+            elif format_type in ("wework", "bark"):
+                memory_separator = "\n\n\n\n"
+            elif format_type in ("telegram", "ntfy", "slack"):
+                memory_separator = "\n\n"
+
+        # 尝试将记忆内容添加到当前批次
+        test_content = current_batch + memory_separator + memory_content
+        if (
+            len(test_content.encode("utf-8")) + len(base_footer.encode("utf-8"))
+            < max_bytes
+        ):
+            current_batch = test_content
+            current_batch_has_content = True
+        else:
+            if current_batch_has_content:
+                _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
+
+            # 记忆内容可能很长，按行拆分成多个批次
+            footer_size = len(base_footer.encode("utf-8"))
+            header_size = len(base_header.encode("utf-8"))
+            available = max_bytes - footer_size - header_size
+
+            memory_lines = memory_content.split("\n")
+            current_batch = base_header
+            current_batch_has_content = False
+
+            for line in memory_lines:
+                test_line = line + "\n" if not line.endswith("\n") else line
+                test_content = current_batch + test_line
+                if len(test_content.encode("utf-8")) + footer_size >= max_bytes and current_batch_has_content:
+                    _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
+                    current_batch = base_header + test_line
+                else:
+                    current_batch = test_content
                 current_batch_has_content = True
 
     # 完成最后批次
