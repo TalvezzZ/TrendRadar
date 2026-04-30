@@ -134,6 +134,39 @@ jobs:
             exit 1
           fi
 
+      - name: Download databases from OSS (for memory enhancement)
+        if: success()
+        env:
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+        run: |
+          cat > sync_download.py << 'EOF'
+          import os
+          from trendradar.core import load_config
+          from trendradar.storage import get_storage_manager
+
+          config = load_config()
+          storage = get_storage_manager(
+              backend_type="auto",
+              data_dir="output",
+              remote_config={
+                  "bucket_name": os.environ.get("S3_BUCKET_NAME"),
+                  "access_key_id": os.environ.get("S3_ACCESS_KEY_ID"),
+                  "secret_access_key": os.environ.get("S3_SECRET_ACCESS_KEY"),
+                  "endpoint_url": os.environ.get("S3_ENDPOINT_URL"),
+                  "region": os.environ.get("S3_REGION")
+              }
+          )
+          # 下载记忆数据库和最近的新闻数据库（用于记忆增强）
+          print("[OSS] 开始下载数据库以支持记忆增强...")
+          storage.sync_databases_from_s3()
+          print("[OSS] ✓ 数据库下载完成")
+          EOF
+          uv run python sync_download.py
+
       - name: Run crawler
         if: success()
         env:
@@ -169,3 +202,4 @@ jobs:
           S3_REGION: ${{ secrets.S3_REGION }}
           GITHUB_ACTIONS: true
         run: uv run python -m trendradar
+        # 注意：数据库上传已在 trendradar/__main__.py 的 _sync_databases_to_remote() 中自动完成
