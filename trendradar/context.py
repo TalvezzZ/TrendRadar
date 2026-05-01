@@ -432,8 +432,10 @@ class AppContext:
         standalone_data: Optional[Dict] = None,
         ai_stats: Optional[Dict] = None,
         report_type: str = "热点分析报告",
+        finance_content: Optional[str] = None,
+        memory_content: Optional[str] = None,
     ) -> List[str]:
-        """分批处理消息内容（支持热榜+RSS合并+AI分析+独立展示区）
+        """分批处理消息内容（支持热榜+RSS合并+AI分析+独立展示区+金融跟踪+记忆增强）
 
         Args:
             report_data: 报告数据
@@ -447,6 +449,8 @@ class AppContext:
             standalone_data: 独立展示区数据
             ai_stats: AI 分析统计数据
             report_type: 报告类型
+            finance_content: 金融跟踪内容（已渲染的字符串）
+            memory_content: 记忆增强内容（已渲染的字符串）
 
         Returns:
             分批后的消息内容列表
@@ -475,6 +479,8 @@ class AppContext:
             ai_stats=ai_stats,
             report_type=report_type,
             show_new_section=self.show_new_section,
+            finance_content=finance_content,
+            memory_content=memory_content,
         )
 
     # === 通知发送 ===

@@ -702,8 +702,8 @@ class NewsAnalyzer:
                         # 提取该关键词出现的平台
                         keyword_platforms = []
                         for platform_id, titles in data_source.items() if data_source else []:
-                            for title_info in titles:
-                                title = title_info.get("title", "")
+                            # titles 是字典，key 是标题字符串，value 是标题数据
+                            for title in titles:
                                 if keyword in title:
                                     platform_name = id_to_name.get(platform_id, platform_id) if id_to_name else platform_id
                                     if platform_name not in keyword_platforms:
@@ -1143,8 +1143,8 @@ class NewsAnalyzer:
                                 "platform": stat.get("platform", "")
                             })
 
-                    # 获取匹配的关键词
-                    matched_keywords = ai_result.matched_keywords if ai_result else []
+                    # 获取匹配的关键词（从 stats 中提取）
+                    matched_keywords = [stat.get("word", "") for stat in stats] if stats else []
 
                     # 生成增强信息
                     if matched_news or matched_keywords:
@@ -1163,8 +1163,8 @@ class NewsAnalyzer:
                 try:
                     from trendradar.finance.enhancer import FinanceEnhancer
 
-                    # 获取匹配的关键词
-                    matched_keywords = ai_result.matched_keywords if ai_result else []
+                    # 获取匹配的关键词（从 stats 中提取）
+                    matched_keywords = [stat.get("word", "") for stat in stats] if stats else []
 
                     if matched_keywords:
                         finance_enhancer = FinanceEnhancer(

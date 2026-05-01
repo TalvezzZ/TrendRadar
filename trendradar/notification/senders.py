@@ -68,21 +68,75 @@ def _render_memory_enhancement(memory_enhancement: Optional[Dict], original_cont
 
 def _render_finance_enhancement(finance_enhancement: Optional[Dict], original_content: str = "") -> str:
     """渲染金融增强内容"""
-    if not finance_enhancement:
+    if not finance_enhancement or not finance_enhancement.get("finance_data"):
         return ""
 
     try:
-        from trendradar.finance.enhancer import FinanceEnhancer
-        enhancer = FinanceEnhancer()
-        # 使用 enhancer 的 format 方法来生成金融增强部分
-        # 只返回增强部分，不包含原始内容
-        full_content = enhancer.format_enhanced_notification(original_content, finance_enhancement)
-        # 提取增强部分（去掉原始内容）
-        if original_content and full_content.startswith(original_content):
-            return full_content[len(original_content):]
-        return full_content
+        sections = []
+        sections.append("━━━━━━━━━━━━━━━━━━")
+        sections.append("💹 相关标的表现")
+        sections.append("")
+
+        for kw_data in finance_enhancement["finance_data"]:
+            sections.append(f"【{kw_data['keyword']}】")
+
+            for symbol in kw_data["symbols"]:
+                # 涨跌符号
+                if symbol["change_pct"] > 0:
+                    direction = "⬆️"
+                elif symbol["change_pct"] < 0:
+                    direction = "⬇️"
+                else:
+                    direction = "➡️"
+
+                # 基本信息
+                line = f"• {symbol['name']} ({symbol['symbol']})     {symbol['change_pct']:+.1f}%  {direction}"
+                sections.append(line)
+
+                # 成交额
+                if symbol.get("volume"):
+                    volume = symbol["volume"]
+                    if volume >= 100000000:
+                        volume_str = f"{volume / 100000000:.1f}亿"
+                    elif volume >= 10000:
+                        volume_str = f"{volume / 10000:.1f}万"
+                    else:
+                        volume_str = f"{volume:.0f}"
+                    sections.append(f"  成交额: {volume_str}")
+
+                # 趋势信息
+                if symbol.get("trend") and abs(symbol["trend"]["total_change_pct"]) > 5:
+                    trend = symbol["trend"]
+                    sections.append(
+                        f"  📈 近{trend['days_count']}日累计: {trend['total_change_pct']:+.1f}%"
+                    )
+
+                # 异常提醒
+                if symbol.get("alert"):
+                    sections.append(f"  ⚠️  {symbol['alert']}")
+
+                # 开放式基金标注 T-1
+                if symbol["type"] == "fund" and symbol.get("data_date"):
+                    sections.append(f"  净值: {symbol['current_price']:.3f} ({symbol['data_date']})")
+
+                sections.append("")
+
+        # 统计信息
+        stats = finance_enhancement.get("stats", {})
+        if stats.get("total_tracked", 0) > 0:
+            sections.append("━━━━━━━━━━━━━━━━━━")
+            sections.append("📊 市场概览")
+            sections.append(
+                f"跟踪标的：{stats['total_tracked']} 个 | "
+                f"上涨：{stats['rising_count']} 个 | "
+                f"下跌：{stats['falling_count']} 个"
+            )
+
+        return "\n".join(sections)
     except Exception as e:
         print(f"[金融跟踪] 格式化失败: {e}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 
