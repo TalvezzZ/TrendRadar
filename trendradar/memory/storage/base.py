@@ -99,7 +99,7 @@ class StorageBackend(ABC):
         搜索记忆
 
         Args:
-            keyword: 搜索关键词
+            keyword: 搜索关键词（不能为空）
             limit: 限制返回数量，None 表示不限制
 
         Returns:
