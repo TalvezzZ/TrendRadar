@@ -259,3 +259,616 @@ def test_ensure_directories(tmp_path):
     assert (tmp_path / "memories" / MemoryType.TOPIC_INSIGHT).exists()
     assert (tmp_path / "memories" / MemoryType.PATTERN).exists()
     assert (tmp_path / "memories" / MemoryType.SIGNAL).exists()
+
+
+# ========== File Operation Tests (Task 4) ==========
+
+
+def test_create_memory_new_file(temp_storage, tmp_path):
+    """测试创建记忆 - 新文件"""
+    memory = Memory(
+        id="create-001",
+        type=MemoryType.DAILY_SUMMARY,
+        title="新建记忆",
+        description="测试新建",
+        content="这是新建的内容",
+        created_at=datetime(2026, 5, 10, 10, 0, 0),
+        updated_at=datetime(2026, 5, 10, 10, 0, 0),
+        metadata={"source": "test"}
+    )
+
+    # 创建记忆
+    temp_storage.create_memory(memory)
+
+    # 验证文件存在
+    file_path = tmp_path / MemoryType.DAILY_SUMMARY / "2026-05.md"
+    assert file_path.exists()
+
+    # 验证内容
+    content = file_path.read_text(encoding='utf-8')
+    assert "id: create-001" in content
+    assert "这是新建的内容" in content
+
+
+def test_create_memory_append_to_existing(temp_storage, tmp_path):
+    """测试创建记忆 - 追加到已有文件"""
+    # 第一条记忆
+    memory1 = Memory(
+        id="append-001",
+        type=MemoryType.WEEKLY_DIGEST,
+        title="第一条记忆",
+        description=None,
+        content="第一条内容",
+        created_at=datetime(2026, 5, 10, 10, 0, 0),
+        updated_at=datetime(2026, 5, 10, 10, 0, 0),
+        metadata={}
+    )
+
+    # 第二条记忆（同一个月）
+    memory2 = Memory(
+        id="append-002",
+        type=MemoryType.WEEKLY_DIGEST,
+        title="第二条记忆",
+        description="追加测试",
+        content="第二条内容",
+        created_at=datetime(2026, 5, 15, 15, 0, 0),
+        updated_at=datetime(2026, 5, 15, 15, 0, 0),
+        metadata={"order": 2}
+    )
+
+    # 创建两条记忆
+    temp_storage.create_memory(memory1)
+    temp_storage.create_memory(memory2)
+
+    # 验证文件内容
+    file_path = tmp_path / MemoryType.WEEKLY_DIGEST / "2026-05.md"
+    content = file_path.read_text(encoding='utf-8')
+
+    # 验证两条记忆都存在
+    assert "id: append-001" in content
+    assert "id: append-002" in content
+    assert "第一条内容" in content
+    assert "第二条内容" in content
+
+    # 验证格式正确：第一条有 1 个 \n---\n，第二条有 2 个（开始和结束）
+    assert content.count("---") == 4  # 两条记忆各有开始和结束的 ---
+
+
+def test_get_memory_found(temp_storage, sample_memory):
+    """测试获取记忆 - 找到"""
+    # 先创建记忆
+    temp_storage.create_memory(sample_memory)
+
+    # 获取记忆
+    retrieved = temp_storage.get_memory("test-001")
+
+    # 验证
+    assert retrieved is not None
+    assert retrieved.id == "test-001"
+    assert retrieved.title == "测试摘要"
+    assert retrieved.content == "# 标题\n\n这是测试内容"
+
+
+def test_get_memory_not_found(temp_storage):
+    """测试获取记忆 - 未找到"""
+    result = temp_storage.get_memory("nonexistent-id")
+    assert result is None
+
+
+def test_get_memory_skip_archive(temp_storage, tmp_path):
+    """测试获取记忆 - 跳过 archive 目录"""
+    # 在 archive 目录中创建一个文件
+    archive_dir = tmp_path / "archive" / MemoryType.DAILY_SUMMARY
+    archive_dir.mkdir(parents=True)
+
+    archive_file = archive_dir / "2026-01.md"
+    archive_content = """---
+id: archive-001
+type: daily_summary
+title: 归档记忆
+created_at: '2026-01-15T10:00:00'
+updated_at: '2026-01-15T10:00:00'
+---
+
+这是归档内容
+"""
+    archive_file.write_text(archive_content, encoding='utf-8')
+
+    # 尝试获取（应该找不到）
+    result = temp_storage.get_memory("archive-001")
+    assert result is None
+
+
+def test_get_memory_corrupted_file(temp_storage, tmp_path):
+    """测试获取记忆 - 损坏的文件"""
+    # 创建一个损坏的文件（缺少 frontmatter）
+    corrupted_file = tmp_path / MemoryType.SIGNAL / "2026-05.md"
+    corrupted_file.write_text("这是没有 frontmatter 的内容", encoding='utf-8')
+
+    # 获取记忆（应该跳过损坏文件）
+    result = temp_storage.get_memory("any-id")
+    assert result is None
+
+
+def test_update_memory_success(temp_storage, sample_memory):
+    """测试更新记忆 - 成功"""
+    # 创建原始记忆
+    temp_storage.create_memory(sample_memory)
+
+    # 修改记忆
+    updated_memory = Memory(
+        id="test-001",
+        type=MemoryType.DAILY_SUMMARY,
+        title="更新后的标题",
+        description="更新后的描述",
+        content="更新后的内容",
+        created_at=datetime(2026, 5, 1, 10, 30, 0),  # 保持 created_at 不变
+        updated_at=datetime(2026, 5, 12, 14, 0, 0),  # updated_at 更新
+        metadata={"updated": True}
+    )
+
+    # 更新
+    temp_storage.update_memory(updated_memory)
+
+    # 验证更新
+    retrieved = temp_storage.get_memory("test-001")
+    assert retrieved is not None
+    assert retrieved.title == "更新后的标题"
+    assert retrieved.content == "更新后的内容"
+    assert retrieved.updated_at == datetime(2026, 5, 12, 14, 0, 0)
+
+
+def test_update_memory_preserve_other_memories(temp_storage, tmp_path):
+    """测试更新记忆 - 保留同文件其他记忆"""
+    # 创建两条记忆
+    memory1 = Memory(
+        id="preserve-001",
+        type=MemoryType.TOPIC_INSIGHT,
+        title="记忆1",
+        description=None,
+        content="内容1",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 1, 10, 0, 0),
+        metadata={}
+    )
+    memory2 = Memory(
+        id="preserve-002",
+        type=MemoryType.TOPIC_INSIGHT,
+        title="记忆2",
+        description=None,
+        content="内容2",
+        created_at=datetime(2026, 5, 2, 10, 0, 0),
+        updated_at=datetime(2026, 5, 2, 10, 0, 0),
+        metadata={}
+    )
+
+    temp_storage.create_memory(memory1)
+    temp_storage.create_memory(memory2)
+
+    # 更新第一条
+    updated_memory1 = Memory(
+        id="preserve-001",
+        type=MemoryType.TOPIC_INSIGHT,
+        title="更新后的记忆1",
+        description=None,
+        content="更新后的内容1",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 12, 12, 0, 0),
+        metadata={}
+    )
+    temp_storage.update_memory(updated_memory1)
+
+    # 验证第一条已更新
+    retrieved1 = temp_storage.get_memory("preserve-001")
+    assert retrieved1.title == "更新后的记忆1"
+
+    # 验证第二条未受影响
+    retrieved2 = temp_storage.get_memory("preserve-002")
+    assert retrieved2.title == "记忆2"
+    assert retrieved2.content == "内容2"
+
+
+def test_delete_memory_success(temp_storage, sample_memory):
+    """测试删除记忆 - 成功"""
+    # 创建记忆
+    temp_storage.create_memory(sample_memory)
+
+    # 验证存在
+    assert temp_storage.get_memory("test-001") is not None
+
+    # 删除
+    temp_storage.delete_memory("test-001")
+
+    # 验证已删除
+    assert temp_storage.get_memory("test-001") is None
+
+
+def test_delete_memory_preserve_other_memories(temp_storage):
+    """测试删除记忆 - 保留同文件其他记忆"""
+    # 创建两条记忆
+    memory1 = Memory(
+        id="delete-001",
+        type=MemoryType.PATTERN,
+        title="记忆1",
+        description=None,
+        content="内容1",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 1, 10, 0, 0),
+        metadata={}
+    )
+    memory2 = Memory(
+        id="delete-002",
+        type=MemoryType.PATTERN,
+        title="记忆2",
+        description=None,
+        content="内容2",
+        created_at=datetime(2026, 5, 2, 10, 0, 0),
+        updated_at=datetime(2026, 5, 2, 10, 0, 0),
+        metadata={}
+    )
+
+    temp_storage.create_memory(memory1)
+    temp_storage.create_memory(memory2)
+
+    # 删除第一条
+    temp_storage.delete_memory("delete-001")
+
+    # 验证第一条已删除
+    assert temp_storage.get_memory("delete-001") is None
+
+    # 验证第二条仍存在
+    assert temp_storage.get_memory("delete-002") is not None
+
+
+def test_delete_memory_remove_empty_file(temp_storage, tmp_path):
+    """测试删除记忆 - 删除空文件"""
+    memory = Memory(
+        id="last-001",
+        type=MemoryType.SIGNAL,
+        title="唯一记忆",
+        description=None,
+        content="内容",
+        created_at=datetime(2026, 5, 10, 10, 0, 0),
+        updated_at=datetime(2026, 5, 10, 10, 0, 0),
+        metadata={}
+    )
+
+    temp_storage.create_memory(memory)
+
+    # 验证文件存在
+    file_path = tmp_path / MemoryType.SIGNAL / "2026-05.md"
+    assert file_path.exists()
+
+    # 删除唯一的记忆
+    temp_storage.delete_memory("last-001")
+
+    # 验证文件已删除
+    assert not file_path.exists()
+
+
+def test_list_memories_all(temp_storage):
+    """测试列出记忆 - 所有类型"""
+    # 创建不同类型的记忆
+    memories = [
+        Memory(
+            id="list-001",
+            type=MemoryType.DAILY_SUMMARY,
+            title="每日摘要",
+            description=None,
+            content="内容1",
+            created_at=datetime(2026, 5, 1, 10, 0, 0),
+            updated_at=datetime(2026, 5, 1, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="list-002",
+            type=MemoryType.WEEKLY_DIGEST,
+            title="周报",
+            description=None,
+            content="内容2",
+            created_at=datetime(2026, 5, 5, 10, 0, 0),
+            updated_at=datetime(2026, 5, 5, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="list-003",
+            type=MemoryType.DAILY_SUMMARY,
+            title="每日摘要2",
+            description=None,
+            content="内容3",
+            created_at=datetime(2026, 5, 10, 10, 0, 0),
+            updated_at=datetime(2026, 5, 10, 10, 0, 0),
+            metadata={}
+        )
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 列出所有记忆
+    result = temp_storage.list_memories()
+
+    # 验证
+    assert len(result) == 3
+    ids = [m.id for m in result]
+    assert "list-001" in ids
+    assert "list-002" in ids
+    assert "list-003" in ids
+
+
+def test_list_memories_by_type(temp_storage):
+    """测试列出记忆 - 按类型过滤"""
+    # 创建不同类型的记忆
+    memories = [
+        Memory(
+            id="filter-001",
+            type=MemoryType.DAILY_SUMMARY,
+            title="每日1",
+            description=None,
+            content="内容1",
+            created_at=datetime(2026, 5, 1, 10, 0, 0),
+            updated_at=datetime(2026, 5, 1, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="filter-002",
+            type=MemoryType.TOPIC_INSIGHT,
+            title="主题洞察",
+            description=None,
+            content="内容2",
+            created_at=datetime(2026, 5, 2, 10, 0, 0),
+            updated_at=datetime(2026, 5, 2, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="filter-003",
+            type=MemoryType.DAILY_SUMMARY,
+            title="每日2",
+            description=None,
+            content="内容3",
+            created_at=datetime(2026, 5, 3, 10, 0, 0),
+            updated_at=datetime(2026, 5, 3, 10, 0, 0),
+            metadata={}
+        )
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 只列出 DAILY_SUMMARY
+    result = temp_storage.list_memories(memory_type=MemoryType.DAILY_SUMMARY)
+
+    # 验证
+    assert len(result) == 2
+    assert all(m.type == MemoryType.DAILY_SUMMARY for m in result)
+
+
+def test_list_memories_date_range(temp_storage):
+    """测试列出记忆 - 日期范围过滤"""
+    memories = [
+        Memory(
+            id="date-001",
+            type=MemoryType.SIGNAL,
+            title="信号1",
+            description=None,
+            content="内容1",
+            created_at=datetime(2026, 4, 30, 10, 0, 0),
+            updated_at=datetime(2026, 4, 30, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="date-002",
+            type=MemoryType.SIGNAL,
+            title="信号2",
+            description=None,
+            content="内容2",
+            created_at=datetime(2026, 5, 5, 10, 0, 0),
+            updated_at=datetime(2026, 5, 5, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="date-003",
+            type=MemoryType.SIGNAL,
+            title="信号3",
+            description=None,
+            content="内容3",
+            created_at=datetime(2026, 5, 15, 10, 0, 0),
+            updated_at=datetime(2026, 5, 15, 10, 0, 0),
+            metadata={}
+        )
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 查询 5/1 ~ 5/10
+    result = temp_storage.list_memories(
+        start_date=datetime(2026, 5, 1),
+        end_date=datetime(2026, 5, 10)
+    )
+
+    # 验证
+    assert len(result) == 1
+    assert result[0].id == "date-002"
+
+
+def test_list_memories_limit(temp_storage):
+    """测试列出记忆 - 数量限制"""
+    memories = [
+        Memory(
+            id=f"limit-{i:03d}",
+            type=MemoryType.PATTERN,
+            title=f"模式{i}",
+            description=None,
+            content=f"内容{i}",
+            created_at=datetime(2026, 5, i, 10, 0, 0),
+            updated_at=datetime(2026, 5, i, 10, 0, 0),
+            metadata={}
+        )
+        for i in range(1, 11)  # 创建 10 条记忆
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 限制返回 5 条
+    result = temp_storage.list_memories(limit=5)
+
+    # 验证
+    assert len(result) == 5
+
+
+def test_list_memories_skip_archive(temp_storage, tmp_path):
+    """测试列出记忆 - 跳过 archive 目录"""
+    # 在正常目录创建记忆
+    normal_memory = Memory(
+        id="normal-001",
+        type=MemoryType.DAILY_SUMMARY,
+        title="正常记忆",
+        description=None,
+        content="正常内容",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 1, 10, 0, 0),
+        metadata={}
+    )
+    temp_storage.create_memory(normal_memory)
+
+    # 在 archive 目录创建文件
+    archive_dir = tmp_path / "archive" / MemoryType.DAILY_SUMMARY
+    archive_dir.mkdir(parents=True)
+    archive_file = archive_dir / "2026-01.md"
+    archive_content = """---
+id: archive-001
+type: daily_summary
+title: 归档记忆
+created_at: '2026-01-15T10:00:00'
+updated_at: '2026-01-15T10:00:00'
+---
+
+归档内容
+"""
+    archive_file.write_text(archive_content, encoding='utf-8')
+
+    # 列出记忆
+    result = temp_storage.list_memories()
+
+    # 验证：只返回正常记忆，不包含归档记忆
+    assert len(result) == 1
+    assert result[0].id == "normal-001"
+
+
+def test_search_memories_found(temp_storage):
+    """测试搜索记忆 - 找到结果"""
+    memories = [
+        Memory(
+            id="search-001",
+            type=MemoryType.DAILY_SUMMARY,
+            title="AI 技术突破",
+            description="关于人工智能的新发现",
+            content="GPT-5 发布了，性能提升显著",
+            created_at=datetime(2026, 5, 1, 10, 0, 0),
+            updated_at=datetime(2026, 5, 1, 10, 0, 0),
+            metadata={"keywords": ["AI", "GPT"]}
+        ),
+        Memory(
+            id="search-002",
+            type=MemoryType.WEEKLY_DIGEST,
+            title="本周经济报告",
+            description="经济数据分析",
+            content="股市上涨，通胀下降",
+            created_at=datetime(2026, 5, 2, 10, 0, 0),
+            updated_at=datetime(2026, 5, 2, 10, 0, 0),
+            metadata={}
+        ),
+        Memory(
+            id="search-003",
+            type=MemoryType.TOPIC_INSIGHT,
+            title="区块链发展",
+            description="AI 与区块链结合的新趋势",
+            content="AI 驱动的智能合约",
+            created_at=datetime(2026, 5, 3, 10, 0, 0),
+            updated_at=datetime(2026, 5, 3, 10, 0, 0),
+            metadata={}
+        )
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 搜索 "AI"
+    result = temp_storage.search_memories("AI")
+
+    # 验证：应该找到 search-001 和 search-003
+    assert len(result) == 2
+    ids = [m.id for m in result]
+    assert "search-001" in ids
+    assert "search-003" in ids
+
+
+def test_search_memories_case_insensitive(temp_storage):
+    """测试搜索记忆 - 忽略大小写"""
+    memory = Memory(
+        id="case-001",
+        type=MemoryType.SIGNAL,
+        title="Python 编程",
+        description=None,
+        content="Python 是一门强大的语言",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 1, 10, 0, 0),
+        metadata={}
+    )
+    temp_storage.create_memory(memory)
+
+    # 使用小写搜索
+    result = temp_storage.search_memories("python")
+
+    # 验证：应该找到
+    assert len(result) == 1
+    assert result[0].id == "case-001"
+
+
+def test_search_memories_with_limit(temp_storage):
+    """测试搜索记忆 - 限制数量"""
+    memories = [
+        Memory(
+            id=f"limit-search-{i:03d}",
+            type=MemoryType.DAILY_SUMMARY,
+            title=f"测试{i}",
+            description=None,
+            content="测试内容",
+            created_at=datetime(2026, 5, i, 10, 0, 0),
+            updated_at=datetime(2026, 5, i, 10, 0, 0),
+            metadata={}
+        )
+        for i in range(1, 11)  # 10 条都包含 "测试"
+    ]
+
+    for mem in memories:
+        temp_storage.create_memory(mem)
+
+    # 搜索并限制返回 3 条
+    result = temp_storage.search_memories("测试", limit=3)
+
+    # 验证
+    assert len(result) == 3
+
+
+def test_search_memories_not_found(temp_storage):
+    """测试搜索记忆 - 未找到"""
+    memory = Memory(
+        id="no-match-001",
+        type=MemoryType.PATTERN,
+        title="无关内容",
+        description=None,
+        content="这里没有要搜索的关键词",
+        created_at=datetime(2026, 5, 1, 10, 0, 0),
+        updated_at=datetime(2026, 5, 1, 10, 0, 0),
+        metadata={}
+    )
+    temp_storage.create_memory(memory)
+
+    # 搜索不存在的关键词
+    result = temp_storage.search_memories("不存在的关键词XYZ")
+
+    # 验证
+    assert len(result) == 0
