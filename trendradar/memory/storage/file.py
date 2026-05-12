@@ -1,6 +1,7 @@
 """
 文件存储后端
 """
+import re
 import yaml
 from pathlib import Path
 from typing import List, Optional
@@ -153,26 +154,52 @@ class FileBackend(StorageBackend):
     # ========== File Operations (Task 4) ==========
 
     def _get_file_path(self, memory: Memory) -> Path:
-        """获取记忆文件路径"""
+        """
+        根据记忆类型和日期确定文件路径
+
+        Args:
+            memory: 记忆对象
+
+        Returns:
+            文件路径
+
+        Raises:
+            ValueError: 如果 memory.type 不是有效的记忆类型
+        """
+        # Validate memory.type against allowed values
+        allowed_types = [
+            MemoryType.DAILY_SUMMARY,
+            MemoryType.WEEKLY_DIGEST,
+            MemoryType.TOPIC_INSIGHT,
+            MemoryType.PATTERN,
+            MemoryType.SIGNAL
+        ]
+        if memory.type not in allowed_types:
+            raise ValueError(f"Invalid memory type: {memory.type}")
+
         date = memory.created_at
         file_name = f"{date.year}-{date.month:02d}.md"
-        return self.base_path / memory.type / file_name
+        type_dir = self.base_path / memory.type
+        return type_dir / file_name
 
     def _find_file_by_id(self, memory_id: str) -> Optional[Path]:
-        """通过 ID 查找记忆文件"""
-        # 扫描所有类型目录（跳过 archive）
-        dirs = [d for d in self.base_path.iterdir()
-                if d.is_dir() and d.name not in ('archive', '.git')]
+        """查找包含指定记忆的文件"""
+        # Escape special regex characters in memory_id
+        escaped_id = re.escape(memory_id)
 
-        for type_dir in dirs:
-            # 扫描所有 .md 文件
-            for md_file in type_dir.glob("*.md"):
+        for type_dir in self.base_path.iterdir():
+            if not type_dir.is_dir() or type_dir.name in ('archive', '.git'):
+                continue
+
+            for md_file in type_dir.glob("**/*.md"):
+                if md_file.name == "MEMORY.md":
+                    continue
                 try:
                     content = md_file.read_text(encoding='utf-8')
-                    if f"id: {memory_id}" in content:
+                    # Use regex with word boundaries to match exact ID
+                    if re.search(rf'^id:\s+{escaped_id}\s*$', content, re.MULTILINE):
                         return md_file
                 except (OSError, IOError):
-                    # 跳过损坏的文件
                     continue
 
         return None
