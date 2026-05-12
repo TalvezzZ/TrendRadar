@@ -13,6 +13,7 @@ from trendradar.memory.storage.exceptions import (
     MemoryParseError,
     MemoryCorruptedError
 )
+from trendradar.memory.index_manager import MemoryIndexManager
 
 
 class FileBackend(StorageBackend):
@@ -29,6 +30,12 @@ class FileBackend(StorageBackend):
         self.base_path = Path(base_path)
         self.auto_index = auto_index
         self._ensure_directories()
+
+        # 初始化索引管理器
+        if self.auto_index:
+            self.index_manager = MemoryIndexManager(self.base_path)
+        else:
+            self.index_manager = None
 
     def _ensure_directories(self) -> None:
         """创建类型目录：daily_summary, weekly_digest 等"""
@@ -256,6 +263,10 @@ class FileBackend(StorageBackend):
             # 创建新文件
             file_path.write_text(md_content, encoding='utf-8')
 
+        # 更新索引
+        if self.index_manager:
+            self.index_manager.update_index()
+
     def get_memory(self, memory_id: str) -> Optional[Memory]:
         """获取记忆"""
         file_path = self._find_file_by_id(memory_id)
@@ -293,6 +304,10 @@ class FileBackend(StorageBackend):
 
         file_path.write_text(content, encoding='utf-8')
 
+        # 更新索引
+        if self.index_manager:
+            self.index_manager.update_index()
+
     def delete_memory(self, memory_id: str) -> None:
         """删除记忆"""
         file_path = self._find_file_by_id(memory_id)
@@ -317,6 +332,10 @@ class FileBackend(StorageBackend):
         else:
             # 没有剩余记忆，删除文件
             file_path.unlink()
+
+        # 更新索引
+        if self.index_manager:
+            self.index_manager.update_index()
 
     def list_memories(
         self,
