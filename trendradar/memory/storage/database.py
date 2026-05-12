@@ -4,7 +4,7 @@ DatabaseBackend - SQLite 数据库存储后端
 import json
 import sqlite3
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from trendradar.memory.models import Memory
 from trendradar.memory.storage.base import StorageBackend
@@ -240,7 +240,8 @@ class DatabaseBackend(StorageBackend):
             query += " ORDER BY created_at DESC"
 
             if limit is not None:
-                query += f" LIMIT {limit}"
+                query += " LIMIT ?"
+                params.append(limit)
 
             cursor.execute(query, params)
             rows = cursor.fetchall()
@@ -276,11 +277,14 @@ class DatabaseBackend(StorageBackend):
                 ORDER BY created_at DESC
             """
 
-            if limit is not None:
-                query += f" LIMIT {limit}"
-
             search_pattern = f"%{keyword}%"
-            cursor.execute(query, (search_pattern, search_pattern))
+            params = [search_pattern, search_pattern]
+
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+
+            cursor.execute(query, params)
             rows = cursor.fetchall()
 
             return [self._row_to_memory(row) for row in rows]
@@ -289,7 +293,7 @@ class DatabaseBackend(StorageBackend):
         finally:
             conn.close()
 
-    def _row_to_memory(self, row: tuple) -> Memory:
+    def _row_to_memory(self, row: Any) -> Memory:
         """
         将数据库行转换为 Memory 对象
 
