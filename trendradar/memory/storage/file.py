@@ -93,7 +93,7 @@ class FileBackend(StorageBackend):
         self,
         yaml_content: dict,
         md_content: str
-    ) -> Optional[Memory]:
+    ) -> Memory:
         """
         解析 YAML frontmatter + Markdown 内容为 Memory 对象
 
@@ -108,6 +108,12 @@ class FileBackend(StorageBackend):
             MemoryParseError: YAML 解析错误或日期格式错误
             MemoryCorruptedError: 缺少必填字段
         """
+        # Add input validation
+        if not isinstance(yaml_content, dict):
+            raise MemoryParseError("yaml_content must be a dict")
+        if not isinstance(md_content, str):
+            raise MemoryParseError("md_content must be a string")
+
         try:
             # 验证必填字段
             required_fields = ["id", "type", "title", "created_at", "updated_at"]
