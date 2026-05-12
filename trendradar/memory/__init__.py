@@ -13,6 +13,8 @@ from trendradar.memory.models import (
 )
 from trendradar.memory.generator import MemoryGenerator
 from trendradar.memory.query import MemoryQueryEngine
+from trendradar.memory.digest_enhancer import DigestEnhancer
+from trendradar.memory.factory import create_memory_repository
 
 __all__ = [
     'MemoryType',
@@ -22,4 +24,6 @@ __all__ = [
     'MemoryRepository',
     'MemoryGenerator',
     'MemoryQueryEngine',
+    'DigestEnhancer',
+    'create_memory_repository',
 ]
