@@ -8,7 +8,10 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from trendradar.memory.storage.base import StorageBackend
 
 
 class MemoryType:
@@ -69,17 +72,20 @@ class MemoryRepository:
     """
     记忆仓库
 
-    提供记忆和记忆链接的数据库访问功能。
+    提供记忆和记忆链接的存储访问功能。
+    使用依赖注入的存储后端进行数据访问。
     """
 
-    def __init__(self, db_path: str):
+    def __init__(self, backend: 'StorageBackend'):
         """
         初始化记忆仓库
 
         Args:
-            db_path: 数据库文件路径
+            backend: 存储后端实例
         """
-        self.db_path = db_path
+        self.backend = backend
+        # 保留 db_path 用于链接功能（仅 DatabaseBackend 支持）
+        self.db_path = getattr(backend, 'db_path', None)
 
     def create(self, memory: Memory) -> None:
         """
@@ -89,32 +95,10 @@ class MemoryRepository:
             memory: 记忆对象
 
         Raises:
-            sqlite3.IntegrityError: 如果记忆 ID 已存在
+            MemoryAlreadyExistsError: 如果记忆 ID 已存在
+            MemoryStorageError: 其他存储错误
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                """
-                INSERT INTO memories
-                (id, type, title, description, content, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    memory.id,
-                    memory.type,
-                    memory.title,
-                    memory.description,
-                    memory.content,
-                    json.dumps(memory.metadata, ensure_ascii=False),
-                    memory.created_at.isoformat(),
-                    memory.updated_at.isoformat()
-                )
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        self.backend.create_memory(memory)
 
     def get_by_id(self, memory_id: str) -> Optional[Memory]:
         """
@@ -126,26 +110,7 @@ class MemoryRepository:
         Returns:
             记忆对象，如果不存在则返回 None
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                """
-                SELECT id, type, title, description, content, metadata, created_at, updated_at
-                FROM memories
-                WHERE id = ?
-                """,
-                (memory_id,)
-            )
-
-            row = cursor.fetchone()
-            if row is None:
-                return None
-
-            return self._row_to_memory(row)
-        finally:
-            conn.close()
+        return self.backend.get_memory(memory_id)
 
     def get_by_type(self, memory_type: str, limit: Optional[int] = None) -> List[Memory]:
         """
@@ -158,26 +123,7 @@ class MemoryRepository:
         Returns:
             记忆对象列表，按创建时间倒序
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            query = """
-                SELECT id, type, title, description, content, metadata, created_at, updated_at
-                FROM memories
-                WHERE type = ?
-                ORDER BY created_at DESC
-            """
-
-            if limit is not None:
-                query += f" LIMIT {limit}"
-
-            cursor.execute(query, (memory_type,))
-            rows = cursor.fetchall()
-
-            return [self._row_to_memory(row) for row in rows]
-        finally:
-            conn.close()
+        return self.backend.list_memories(memory_type=memory_type, limit=limit)
 
     def get_by_date_range(
         self,
@@ -196,37 +142,11 @@ class MemoryRepository:
         Returns:
             记忆对象列表，按创建时间倒序
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            if memory_type is not None:
-                query = """
-                    SELECT id, type, title, description, content, metadata, created_at, updated_at
-                    FROM memories
-                    WHERE type = ? AND created_at >= ? AND created_at <= ?
-                    ORDER BY created_at DESC
-                """
-                cursor.execute(
-                    query,
-                    (memory_type, start_date.isoformat(), end_date.isoformat())
-                )
-            else:
-                query = """
-                    SELECT id, type, title, description, content, metadata, created_at, updated_at
-                    FROM memories
-                    WHERE created_at >= ? AND created_at <= ?
-                    ORDER BY created_at DESC
-                """
-                cursor.execute(
-                    query,
-                    (start_date.isoformat(), end_date.isoformat())
-                )
-
-            rows = cursor.fetchall()
-            return [self._row_to_memory(row) for row in rows]
-        finally:
-            conn.close()
+        return self.backend.list_memories(
+            memory_type=memory_type,
+            start_date=start_date,
+            end_date=end_date
+        )
 
     def update(self, memory: Memory) -> None:
         """
@@ -236,36 +156,10 @@ class MemoryRepository:
             memory: 记忆对象（必须包含有效的 id）
 
         Raises:
-            ValueError: 如果记忆 ID 不存在
+            MemoryNotFoundError: 如果记忆 ID 不存在
+            MemoryStorageError: 其他存储错误
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                """
-                UPDATE memories
-                SET type = ?, title = ?, description = ?, content = ?,
-                    metadata = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    memory.type,
-                    memory.title,
-                    memory.description,
-                    memory.content,
-                    json.dumps(memory.metadata, ensure_ascii=False),
-                    memory.updated_at.isoformat(),
-                    memory.id
-                )
-            )
-
-            if cursor.rowcount == 0:
-                raise ValueError(f"Memory with id '{memory.id}' not found")
-
-            conn.commit()
-        finally:
-            conn.close()
+        self.backend.update_memory(memory)
 
     def delete(self, memory_id: str) -> None:
         """
@@ -274,22 +168,21 @@ class MemoryRepository:
         Args:
             memory_id: 记忆 ID
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        # 先删除相关的链接（仅 DatabaseBackend 支持）
+        if self.db_path:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "DELETE FROM memory_links WHERE from_memory_id = ? OR to_memory_id = ?",
+                    (memory_id, memory_id)
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
-        try:
-            # 先删除相关的链接
-            cursor.execute(
-                "DELETE FROM memory_links WHERE from_memory_id = ? OR to_memory_id = ?",
-                (memory_id, memory_id)
-            )
-
-            # 删除记忆
-            cursor.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
-
-            conn.commit()
-        finally:
-            conn.close()
+        # 删除记忆
+        self.backend.delete_memory(memory_id)
 
     def search(self, keyword: str, limit: Optional[int] = None) -> List[Memory]:
         """
@@ -302,27 +195,7 @@ class MemoryRepository:
         Returns:
             匹配的记忆对象列表
         """
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            query = """
-                SELECT id, type, title, description, content, metadata, created_at, updated_at
-                FROM memories
-                WHERE title LIKE ? OR content LIKE ?
-                ORDER BY created_at DESC
-            """
-
-            if limit is not None:
-                query += f" LIMIT {limit}"
-
-            search_pattern = f"%{keyword}%"
-            cursor.execute(query, (search_pattern, search_pattern))
-            rows = cursor.fetchall()
-
-            return [self._row_to_memory(row) for row in rows]
-        finally:
-            conn.close()
+        return self.backend.search_memories(keyword, limit)
 
     def create_link(self, link: MemoryLink) -> None:
         """
@@ -442,10 +315,14 @@ class MemoryRepository:
         将数据库行转换为 Memory 对象
 
         Args:
-            row: 数据库查询结果行
+            row: 数据库查询结果行 (id, type, title, description, content, metadata, created_at, updated_at)
 
         Returns:
             Memory 对象
+
+        Note:
+            此方法仅用于兼容 MemoryQueryEngine 的直接 SQL 查询。
+            新代码应使用 StorageBackend 接口。
         """
         return Memory(
             id=row[0],

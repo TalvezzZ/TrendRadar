@@ -17,6 +17,7 @@ from trendradar.memory.models import (
     MemoryType,
     LinkType
 )
+from trendradar.memory.storage.database import DatabaseBackend
 from trendradar.persistence.ai_storage import AIAnalysisStorage
 
 
@@ -40,7 +41,8 @@ class MemoryGenerator:
         # 确保数据库表存在
         self._ensure_schema()
 
-        self.repository = MemoryRepository(db_path)
+        backend = DatabaseBackend(db_path)
+        self.repository = MemoryRepository(backend)
         self.ai_client = AIClient(ai_config)
         self.ai_storage = AIAnalysisStorage(db_path)
 

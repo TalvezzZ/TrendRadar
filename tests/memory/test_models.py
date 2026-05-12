@@ -17,6 +17,8 @@ from trendradar.memory.models import (
     MemoryLink,
     MemoryRepository
 )
+from trendradar.memory.storage.database import DatabaseBackend
+from trendradar.memory.storage.exceptions import MemoryAlreadyExistsError
 
 
 @pytest.fixture
@@ -42,7 +44,8 @@ def initialized_db(temp_db):
 @pytest.fixture
 def memory_repo(initialized_db):
     """创建记忆仓库实例"""
-    return MemoryRepository(initialized_db)
+    backend = DatabaseBackend(initialized_db)
+    return MemoryRepository(backend)
 
 
 class TestMemoryType:
@@ -243,7 +246,7 @@ class TestMemoryRepository:
 
         memory_repo.create(memory1)
 
-        with pytest.raises(sqlite3.IntegrityError):
+        with pytest.raises(MemoryAlreadyExistsError):
             memory_repo.create(memory2)
 
     def test_get_by_id_not_found(self, memory_repo):

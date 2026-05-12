@@ -17,6 +17,7 @@ from trendradar.memory.models import (
     MemoryLink,
     MemoryRepository
 )
+from trendradar.memory.storage.database import DatabaseBackend
 from trendradar.memory.query import MemoryQueryEngine
 
 
@@ -49,7 +50,8 @@ def query_engine(initialized_db):
 @pytest.fixture
 def sample_memories(initialized_db):
     """创建样本记忆数据"""
-    repo = MemoryRepository(initialized_db)
+    backend = DatabaseBackend(initialized_db)
+    repo = MemoryRepository(backend)
     base_time = datetime.now()
 
     memories = []

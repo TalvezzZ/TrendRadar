@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from trendradar.memory.models import Memory, MemoryRepository
+from trendradar.memory.storage.database import DatabaseBackend
 
 
 class MemoryQueryEngine:
@@ -27,7 +28,8 @@ class MemoryQueryEngine:
             db_path: 数据库文件路径
         """
         self.db_path = db_path
-        self.repository = MemoryRepository(db_path)
+        backend = DatabaseBackend(db_path)
+        self.repository = MemoryRepository(backend)
 
     def search_memories(
         self,
