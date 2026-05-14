@@ -675,7 +675,20 @@ class NewsAnalyzer:
             }
             ai_storage.save_analysis_sections(analysis_id, sections_data)
 
-            print(f"[持久化] AI 分析结果已保存（ID: {analysis_id}）")
+            print(f"[持久化] AI 分析结果已保存到日期数据库（ID: {analysis_id}）")
+
+            # 同时保存到 memory.db 用于记忆生成
+            try:
+                memory_db_path = str(backend.data_dir / "memory.db")
+                memory_ai_storage = AIAnalysisStorage(memory_db_path)
+
+                # 使用相同的分析数据保存到memory.db
+                memory_analysis_id = memory_ai_storage.save_analysis_result(analysis_data)
+                memory_ai_storage.save_analysis_sections(memory_analysis_id, sections_data)
+
+                print(f"[持久化] AI 分析结果已同步到 memory.db（ID: {memory_analysis_id}）")
+            except Exception as memory_error:
+                print(f"[持久化] 同步到 memory.db 失败（不影响主流程）: {memory_error}")
 
         except Exception as e:
             import traceback
@@ -1133,6 +1146,7 @@ class NewsAnalyzer:
             if cfg.get("MEMORY", {}).get("ENHANCE_NOTIFICATION", True):
                 try:
                     from trendradar.memory.enhancer import MemoryEnhancer
+                    from trendradar.memory.digest_enhancer import DigestEnhancer
 
                     # 收集匹配的新闻和关键词
                     matched_news = []
@@ -1154,6 +1168,29 @@ class NewsAnalyzer:
                             matched_keywords=matched_keywords
                         )
                         print(f"[记忆] ✅ 已增强推送内容（{len(memory_enhancement.get('news_with_context', []))} 条上下文）")
+
+                    # 📝 每日摘要增强：添加历史每日摘要
+                    digest_config = cfg.get("MEMORY", {}).get("DAILY_DIGEST", {})
+                    if digest_config.get("enabled", True):
+                        try:
+                            digest_enhancer = DigestEnhancer(data_dir=cfg.get("STORAGE", {}).get("DATA_DIR", "output"))
+                            digest_content = digest_enhancer.enhance_notification(
+                                days=digest_config.get("days", 7),
+                                max_summaries=digest_config.get("max_summaries", 3),
+                                max_content_length=digest_config.get("max_content_length", 300)
+                            )
+
+                            if digest_content:
+                                # 将每日摘要内容附加到记忆增强中
+                                if memory_enhancement is None:
+                                    memory_enhancement = {}
+                                memory_enhancement["daily_digest"] = digest_content
+                                print(f"[记忆] ✅ 已添加每日摘要回顾")
+                            else:
+                                print(f"[记忆] ℹ️  暂无每日摘要")
+                        except Exception as digest_error:
+                            print(f"[记忆] ⚠️ 每日摘要增强失败: {digest_error}")
+
                 except Exception as e:
                     print(f"[记忆] ⚠️ 增强失败: {e}")
 

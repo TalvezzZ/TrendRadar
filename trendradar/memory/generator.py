@@ -28,23 +28,38 @@ class MemoryGenerator:
     使用 AI 分析历史数据，生成智能记忆摘要。
     """
 
-    def __init__(self, db_path: str, ai_config: Dict[str, Any]):
+    def __init__(self, db_path: str, ai_config: Dict[str, Any], use_file_storage: bool = True):
         """
         初始化记忆生成器
 
         Args:
-            db_path: 数据库文件路径
+            db_path: 数据库文件路径（用于读取AI分析数据）
             ai_config: AI 客户端配置
+            use_file_storage: 是否使用文件存储记忆（默认True，推荐）
         """
         self.db_path = db_path
+        self.use_file_storage = use_file_storage
 
-        # 确保数据库表存在
-        self._ensure_schema()
+        # AI分析数据仍从数据库读取
+        self.ai_storage = AIAnalysisStorage(db_path)
 
-        backend = DatabaseBackend(db_path)
+        # 记忆存储：优先使用文件存储
+        if use_file_storage:
+            from pathlib import Path
+            from trendradar.memory.storage.file import FileBackend
+
+            # 文件存储路径：与db_path同级的memory_markdown目录
+            memory_base_path = Path(db_path).parent / "memory_markdown"
+            backend = FileBackend(str(memory_base_path), auto_index=True)
+            print(f"[记忆] 使用文件存储: {memory_base_path}")
+        else:
+            # 数据库模式（已废弃）
+            self._ensure_schema()
+            backend = DatabaseBackend(db_path)
+            print(f"[记忆] 使用数据库存储: {db_path}")
+
         self.repository = MemoryRepository(backend)
         self.ai_client = AIClient(ai_config)
-        self.ai_storage = AIAnalysisStorage(db_path)
 
     def _ensure_schema(self) -> None:
         """确保数据库中存在所有必要的表"""

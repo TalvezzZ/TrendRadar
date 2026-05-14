@@ -47,23 +47,46 @@ def _render_ai_analysis(ai_analysis: Any, channel: str) -> str:
 
 
 def _render_memory_enhancement(memory_enhancement: Optional[Dict], original_content: str = "") -> str:
-    """渲染记忆增强内容"""
+    """渲染记忆增强内容（包括智能洞察和每日摘要）"""
     if not memory_enhancement:
         return ""
 
+    sections = []
+
     try:
-        from trendradar.memory.enhancer import MemoryEnhancer
-        enhancer = MemoryEnhancer()
-        # 使用 enhancer 的 format 方法来生成记忆增强部分
-        # 只返回增强部分，不包含原始内容
-        full_content = enhancer.format_enhanced_notification(original_content, memory_enhancement)
-        # 提取增强部分（去掉原始内容）
-        if original_content and full_content.startswith(original_content):
-            return full_content[len(original_content):]
-        return full_content
+        # 1. 渲染智能洞察部分（原有的记忆增强功能）
+        # 创建一个临时的 memory_enhancement 字典，不包含 daily_digest
+        temp_enhancement = {k: v for k, v in memory_enhancement.items() if k != "daily_digest"}
+
+        if temp_enhancement:
+            from trendradar.memory.enhancer import MemoryEnhancer
+            enhancer = MemoryEnhancer()
+            # 使用 enhancer 的 format 方法来生成记忆增强部分
+            # 只返回增强部分，不包含原始内容
+            full_content = enhancer.format_enhanced_notification(original_content, temp_enhancement)
+            # 提取增强部分（去掉原始内容）
+            if original_content and full_content.startswith(original_content):
+                insight_content = full_content[len(original_content):]
+            else:
+                insight_content = full_content
+
+            if insight_content.strip():
+                sections.append(insight_content.strip())
+
     except Exception as e:
-        print(f"[记忆增强] 格式化失败: {e}")
-        return ""
+        print(f"[记忆增强] 智能洞察格式化失败: {e}")
+
+    try:
+        # 2. 渲染每日摘要部分
+        daily_digest = memory_enhancement.get("daily_digest")
+        if daily_digest:
+            sections.append(daily_digest.strip())
+
+    except Exception as e:
+        print(f"[记忆增强] 每日摘要格式化失败: {e}")
+
+    # 合并所有部分
+    return "\n\n".join(sections) if sections else ""
 
 
 def _render_finance_enhancement(finance_enhancement: Optional[Dict], original_content: str = "") -> str:

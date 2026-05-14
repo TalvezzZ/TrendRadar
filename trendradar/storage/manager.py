@@ -8,6 +8,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 from trendradar.storage.base import StorageBackend, NewsData, RSSData
 from trendradar.utils.time import DEFAULT_TIMEZONE
@@ -560,17 +561,21 @@ class StorageManager:
                 remote_key = "databases/memory.db"
                 local_size = memory_db.stat().st_size
 
-                # 检查远程文件是否存在且大小相同（增量同步）
+                # 检查远程文件是否存在且需要更新（增量同步）
                 skip_upload = False
                 try:
                     remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
                     remote_size = remote_obj['ContentLength']
+                    remote_modified = remote_obj['LastModified']
+                    local_modified = datetime.fromtimestamp(memory_db.stat().st_mtime)
 
-                    if remote_size == local_size:
-                        print(f"[数据库同步] 跳过: memory.db (已存在，大小相同)")
+                    # 本地文件更新 且 大小不同 -> 需要上传
+                    # 只检查大小可能导致内容变化但大小不变的情况被跳过
+                    if local_modified <= remote_modified and remote_size == local_size:
+                        print(f"[数据库同步] 跳过: memory.db (远程已是最新)")
                         skip_upload = True
                     else:
-                        print(f"[数据库同步] 更新: memory.db ({local_size / 1024:.1f} KB, 远程: {remote_size / 1024:.1f} KB)")
+                        print(f"[数据库同步] 更新: memory.db ({local_size / 1024:.1f} KB, 本地修改: {local_modified.strftime('%Y-%m-%d %H:%M:%S')})")
                 except ClientError as e:
                     if e.response['Error']['Code'] == '404':
                         print(f"[数据库同步] 上传: memory.db ({local_size / 1024:.1f} KB)")
