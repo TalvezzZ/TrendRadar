@@ -1173,7 +1173,10 @@ class NewsAnalyzer:
                     digest_config = cfg.get("MEMORY", {}).get("DAILY_DIGEST", {})
                     if digest_config.get("enabled", True):
                         try:
-                            digest_enhancer = DigestEnhancer(data_dir=cfg.get("STORAGE", {}).get("DATA_DIR", "output"))
+                            digest_enhancer = DigestEnhancer(
+                                data_dir=cfg.get("STORAGE", {}).get("DATA_DIR", "output"),
+                                use_file_storage=True  # 使用文件存储模式
+                            )
                             digest_content = digest_enhancer.enhance_notification(
                                 days=digest_config.get("days", 7),
                                 max_summaries=digest_config.get("max_summaries", 3),

@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any
 
 from trendradar.memory.models import Memory, MemoryType, MemoryRepository
 from trendradar.memory.storage.database import DatabaseBackend
+from trendradar.memory.storage.file import FileBackend
 
 
 logger = logging.getLogger(__name__)
@@ -19,15 +20,18 @@ logger = logging.getLogger(__name__)
 class DigestEnhancer:
     """每日摘要增强器 - 为通知推送添加历史每日摘要"""
 
-    def __init__(self, data_dir: str = "output"):
+    def __init__(self, data_dir: str = "output", use_file_storage: bool = True):
         """
         初始化增强器
 
         Args:
             data_dir: 数据目录路径
+            use_file_storage: 是否使用文件存储（默认True）
         """
         self.data_dir = Path(data_dir)
+        self.use_file_storage = use_file_storage
         self.memory_db = self.data_dir / "memory.db"
+        self.memory_markdown = self.data_dir / "memory_markdown"
 
     def get_recent_summaries(
         self,
@@ -50,14 +54,21 @@ class DigestEnhancer:
             "error": None
         }
 
-        # 检查数据库是否存在
-        if not self.memory_db.exists():
-            logger.debug(f"记忆数据库不存在: {self.memory_db}")
-            return result
-
         try:
-            # 创建存储后端和仓库
-            backend = DatabaseBackend(db_path=str(self.memory_db))
+            # 根据配置选择存储后端
+            if self.use_file_storage:
+                # 文件存储模式
+                if not self.memory_markdown.exists():
+                    logger.debug(f"记忆文件目录不存在: {self.memory_markdown}")
+                    return result
+                backend = FileBackend(base_path=str(self.memory_markdown), auto_index=False)
+            else:
+                # 数据库存储模式
+                if not self.memory_db.exists():
+                    logger.debug(f"记忆数据库不存在: {self.memory_db}")
+                    return result
+                backend = DatabaseBackend(db_path=str(self.memory_db))
+
             repo = MemoryRepository(backend)
 
             # 计算日期范围
