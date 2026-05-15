@@ -98,6 +98,9 @@ jobs:
                   "region": os.environ.get("S3_REGION")
               }
           )
+          # 上传数据库
           storage.sync_databases_to_s3()
+          # 上传记忆文件
+          storage.sync_memory_markdown_to_s3()
           EOF
           uv run python sync_upload.py

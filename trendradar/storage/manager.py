@@ -603,6 +603,122 @@ class StorageManager:
         print(f"[数据库同步] 上传完成，共上传 {uploaded_count} 个文件")
         return uploaded_count
 
+    def sync_memory_markdown_to_s3(self) -> int:
+        """
+        上传记忆 Markdown 文件到 OSS
+
+        上传 memory_markdown 目录下的所有 .md 文件到远程存储
+
+        Returns:
+            成功上传的文件数量
+        """
+        # 检查是否配置了远程存储
+        if not self._has_remote_config():
+            print("[记忆同步] 未配置远程存储，跳过上传")
+            return 0
+
+        try:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            from botocore.exceptions import ClientError
+        except ImportError:
+            print("[记忆同步] 未安装 boto3，跳过上传")
+            return 0
+
+        print("[记忆同步] 开始上传记忆文件到 OSS...")
+
+        # 创建 S3 客户端
+        try:
+            bucket_name = self.remote_config.get("bucket_name") or os.environ.get("S3_BUCKET_NAME")
+            access_key = self.remote_config.get("access_key_id") or os.environ.get("S3_ACCESS_KEY_ID")
+            secret_key = self.remote_config.get("secret_access_key") or os.environ.get("S3_SECRET_ACCESS_KEY")
+            endpoint = self.remote_config.get("endpoint_url") or os.environ.get("S3_ENDPOINT_URL")
+            region = self.remote_config.get("region") or os.environ.get("S3_REGION", "")
+
+            use_sigv2 = "aliyuncs.com" in endpoint.lower()
+            signature_version = 's3' if use_sigv2 else 's3v4'
+
+            s3_config = BotoConfig(
+                s3={"addressing_style": "virtual"},
+                signature_version=signature_version,
+            )
+
+            client_kwargs = {
+                "endpoint_url": endpoint,
+                "aws_access_key_id": access_key,
+                "aws_secret_access_key": secret_key,
+                "config": s3_config,
+            }
+            if region:
+                client_kwargs["region_name"] = region
+
+            s3_client = boto3.client("s3", **client_kwargs)
+
+        except Exception as e:
+            print(f"[记忆同步] 初始化 S3 客户端失败: {e}")
+            return 0
+
+        uploaded_count = 0
+        data_dir = Path(self.data_dir)
+        memory_dir = data_dir / "memory_markdown"
+
+        if not memory_dir.exists():
+            print(f"[记忆同步] 记忆目录不存在: {memory_dir}")
+            return 0
+
+        # 递归查找所有 .md 文件
+        md_files = list(memory_dir.rglob("*.md"))
+        print(f"[记忆同步] 找到 {len(md_files)} 个记忆文件")
+
+        for md_file in md_files:
+            try:
+                # 计算相对路径: memory_markdown/daily_summary/2026-05.md
+                relative_path = md_file.relative_to(memory_dir)
+                remote_key = f"memory_markdown/{relative_path}"
+                local_size = md_file.stat().st_size
+                local_modified = datetime.fromtimestamp(md_file.stat().st_mtime)
+
+                # 检查远程文件是否需要更新
+                skip_upload = False
+                try:
+                    remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
+                    remote_size = remote_obj['ContentLength']
+                    remote_modified = remote_obj['LastModified']
+
+                    # 如果本地文件更旧或大小相同，跳过
+                    if local_modified <= remote_modified and remote_size == local_size:
+                        skip_upload = True
+                    else:
+                        print(f"[记忆同步] 更新: {relative_path} ({local_size / 1024:.1f} KB)")
+                except ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        print(f"[记忆同步] 上传: {relative_path} ({local_size / 1024:.1f} KB)")
+                    else:
+                        raise
+
+                if skip_upload:
+                    continue
+
+                # 上传文件
+                with open(md_file, 'rb') as f:
+                    file_content = f.read()
+
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=remote_key,
+                    Body=file_content,
+                    ContentLength=local_size,
+                    ContentType='text/markdown; charset=utf-8',
+                )
+
+                uploaded_count += 1
+
+            except Exception as e:
+                print(f"[记忆同步] 上传失败 ({relative_path}): {e}")
+
+        print(f"[记忆同步] 上传完成，共上传 {uploaded_count} 个文件")
+        return uploaded_count
+
     def sync_databases_from_s3(self) -> int:
         """
         从 OSS 下载数据库到本地
