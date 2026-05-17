@@ -567,7 +567,9 @@ class StorageManager:
                     remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
                     remote_size = remote_obj['ContentLength']
                     remote_modified = remote_obj['LastModified']
-                    local_modified = datetime.fromtimestamp(memory_db.stat().st_mtime)
+                    # 转换为 UTC aware datetime 以便比较
+                    from datetime import timezone
+                    local_modified = datetime.fromtimestamp(memory_db.stat().st_mtime, tz=timezone.utc)
 
                     # 本地文件更新 且 大小不同 -> 需要上传
                     # 只检查大小可能导致内容变化但大小不变的情况被跳过

@@ -2575,7 +2575,11 @@ def _handle_memory_commands(args, config: Dict) -> None:
 
     # 创建上下文获取数据库路径
     ctx = AppContext(config)
-    db_path = ctx.db_path
+    # 记忆生成需要使用 memory.db 的路径，不是每日数据库路径
+    storage_config = config.get("STORAGE", {})
+    data_dir = storage_config.get("DATA_DIR", "output")
+    from pathlib import Path
+    db_path = str(Path(data_dir) / "memory.db")
 
     # 获取存储管理器用于数据同步
     storage_manager = ctx.get_storage_manager()
