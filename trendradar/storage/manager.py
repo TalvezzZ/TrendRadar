@@ -678,7 +678,9 @@ class StorageManager:
                 relative_path = md_file.relative_to(memory_dir)
                 remote_key = f"memory_markdown/{relative_path}"
                 local_size = md_file.stat().st_size
-                local_modified = datetime.fromtimestamp(md_file.stat().st_mtime)
+                # 转换为 UTC aware datetime 以便比较
+                from datetime import timezone
+                local_modified = datetime.fromtimestamp(md_file.stat().st_mtime, tz=timezone.utc)
 
                 # 检查远程文件是否需要更新
                 skip_upload = False
