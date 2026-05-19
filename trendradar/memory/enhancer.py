@@ -22,7 +22,7 @@ class MemoryEnhancer:
             data_dir: 数据目录路径
         """
         self.data_dir = Path(data_dir)
-        self.memory_db = self.data_dir / "memory.db"
+        self.ai_analysis_db = self.data_dir / "ai_analysis.db"
         self.news_dir = self.data_dir / "news"
 
     def enhance_news_push(
@@ -87,7 +87,7 @@ class MemoryEnhancer:
             "trend": None
         }
 
-        if not self.memory_db.exists():
+        if not self.ai_analysis_db.exists():
             return context
 
         # 提取新闻标题中的关键词（简单分词）
@@ -97,7 +97,7 @@ class MemoryEnhancer:
         if not keywords:
             return context
 
-        conn = sqlite3.connect(self.memory_db)
+        conn = sqlite3.connect(self.ai_analysis_db)
         cursor = conn.cursor()
 
         try:
@@ -307,10 +307,10 @@ class MemoryEnhancer:
             "last_update": None
         }
 
-        if not self.memory_db.exists():
+        if not self.ai_analysis_db.exists():
             return stats
 
-        conn = sqlite3.connect(self.memory_db)
+        conn = sqlite3.connect(self.ai_analysis_db)
         cursor = conn.cursor()
 
         try:

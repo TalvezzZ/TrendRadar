@@ -45,7 +45,7 @@ class FinanceEnhancer:
         self.show_volume = self.display_config.get("show_volume", True)
 
         # 同步映射到数据库
-        db_path = self.data_dir / "memory.db"
+        db_path = self.data_dir / "ai_analysis.db"
         if db_path.exists():
             self.mapper.sync_to_database(str(db_path))
 

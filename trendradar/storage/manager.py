@@ -372,7 +372,7 @@ class StorageManager:
     # === 持久化模块集成方法 ===
 
     def get_memory_db_path(self) -> str:
-        """获取 memory.db 路径"""
+        """获取 ai_analysis.db 路径"""
         if self.backend_type == 'local' or self._resolve_backend_type() == 'local':
             from trendradar.storage.local import LocalStorageBackend
             backend = self.get_backend()
@@ -380,12 +380,12 @@ class StorageManager:
                 output_dir = Path(backend.data_dir)
                 # 确保目录存在
                 output_dir.mkdir(parents=True, exist_ok=True)
-                return str(output_dir / 'memory.db')
-        # 远程模式暂不支持 memory.db
-        raise NotImplementedError("Memory DB not supported in remote mode yet")
+                return str(output_dir / 'ai_analysis.db')
+        # 远程模式暂不支持 ai_analysis.db
+        raise NotImplementedError("AI analysis DB not supported in remote mode yet")
 
     def ensure_memory_db(self):
-        """确保 memory.db 存在并返回连接"""
+        """确保 ai_analysis.db 存在并返回连接"""
         import sqlite3
         from trendradar.persistence.schema import initialize_memory_db
 
@@ -448,7 +448,7 @@ class StorageManager:
         """
         上传本地数据库到 OSS
 
-        上传所有日期数据库和 memory.db 到远程存储
+        上传所有日期数据库和 ai_analysis.db 到远程存储
 
         Returns:
             成功上传的文件数量
@@ -554,12 +554,12 @@ class StorageManager:
                 except Exception as e:
                     print(f"[数据库同步] 上传失败 ({db_file.name}): {e}")
 
-        # 2. 上传 memory.db
-        memory_db = data_dir / "memory.db"
-        if memory_db.exists():
+        # 2. 上传 ai_analysis.db
+        ai_analysis_db = data_dir / "ai_analysis.db"
+        if ai_analysis_db.exists():
             try:
-                remote_key = "databases/memory.db"
-                local_size = memory_db.stat().st_size
+                remote_key = "databases/ai_analysis.db"
+                local_size = ai_analysis_db.stat().st_size
 
                 # 检查远程文件是否存在且需要更新（增量同步）
                 skip_upload = False
@@ -569,23 +569,23 @@ class StorageManager:
                     remote_modified = remote_obj['LastModified']
                     # 转换为 UTC aware datetime 以便比较
                     from datetime import timezone
-                    local_modified = datetime.fromtimestamp(memory_db.stat().st_mtime, tz=timezone.utc)
+                    local_modified = datetime.fromtimestamp(ai_analysis_db.stat().st_mtime, tz=timezone.utc)
 
                     # 本地文件更新 且 大小不同 -> 需要上传
                     # 只检查大小可能导致内容变化但大小不变的情况被跳过
                     if local_modified <= remote_modified and remote_size == local_size:
-                        print(f"[数据库同步] 跳过: memory.db (远程已是最新)")
+                        print(f"[数据库同步] 跳过: ai_analysis.db (远程已是最新)")
                         skip_upload = True
                     else:
-                        print(f"[数据库同步] 更新: memory.db ({local_size / 1024:.1f} KB, 本地修改: {local_modified.strftime('%Y-%m-%d %H:%M:%S')})")
+                        print(f"[数据库同步] 更新: ai_analysis.db ({local_size / 1024:.1f} KB, 本地修改: {local_modified.strftime('%Y-%m-%d %H:%M:%S')})")
                 except ClientError as e:
                     if e.response['Error']['Code'] == '404':
-                        print(f"[数据库同步] 上传: memory.db ({local_size / 1024:.1f} KB)")
+                        print(f"[数据库同步] 上传: ai_analysis.db ({local_size / 1024:.1f} KB)")
                     else:
                         raise
 
                 if not skip_upload:
-                    with open(memory_db, 'rb') as f:
+                    with open(ai_analysis_db, 'rb') as f:
                         file_content = f.read()
 
                     s3_client.put_object(
@@ -600,7 +600,7 @@ class StorageManager:
                     print(f"[数据库同步] 上传成功: {remote_key}")
 
             except Exception as e:
-                print(f"[数据库同步] 上传失败 (memory.db): {e}")
+                print(f"[数据库同步] 上传失败 (ai_analysis.db): {e}")
 
         print(f"[数据库同步] 上传完成，共上传 {uploaded_count} 个文件")
         return uploaded_count
@@ -806,7 +806,7 @@ class StorageManager:
                 try:
                     # 解析本地路径
                     # databases/news/2025-12-21.db -> output/news/2025-12-21.db
-                    # databases/memory.db -> output/memory.db
+                    # databases/ai_analysis.db -> output/ai_analysis.db
                     relative_path = key.replace('databases/', '', 1)
                     local_path = data_dir / relative_path
 

@@ -30,7 +30,7 @@ class DigestEnhancer:
         """
         self.data_dir = Path(data_dir)
         self.use_file_storage = use_file_storage
-        self.memory_db = self.data_dir / "memory.db"
+        self.ai_analysis_db = self.data_dir / "ai_analysis.db"
         self.memory_markdown = self.data_dir / "memory_markdown"
 
     def get_recent_summaries(
@@ -64,10 +64,10 @@ class DigestEnhancer:
                 backend = FileBackend(base_path=str(self.memory_markdown), auto_index=False)
             else:
                 # 数据库存储模式
-                if not self.memory_db.exists():
-                    logger.debug(f"记忆数据库不存在: {self.memory_db}")
+                if not self.ai_analysis_db.exists():
+                    logger.debug(f"AI分析数据库不存在: {self.ai_analysis_db}")
                     return result
-                backend = DatabaseBackend(db_path=str(self.memory_db))
+                backend = DatabaseBackend(db_path=str(self.ai_analysis_db))
 
             repo = MemoryRepository(backend)
 

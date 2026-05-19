@@ -26,7 +26,7 @@ def create_memory_repository(config: Dict[str, Any]) -> MemoryRepository:
         >>> config = {
         ...     "storage_type": "database",
         ...     "database_storage": {
-        ...         "db_path": "/path/to/memory.db"
+        ...         "db_path": "/path/to/ai_analysis.db"
         ...     }
         ... }
         >>> repo = create_memory_repository(config)
@@ -43,7 +43,7 @@ def create_memory_repository(config: Dict[str, Any]) -> MemoryRepository:
 
         默认使用数据库:
         >>> config = {
-        ...     "database_storage": {"db_path": "/path/to/memory.db"}
+        ...     "database_storage": {"db_path": "/path/to/ai_analysis.db"}
         ... }
         >>> repo = create_memory_repository(config)
     """

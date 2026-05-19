@@ -677,25 +677,25 @@ class NewsAnalyzer:
 
             print(f"[持久化] AI 分析结果已保存到日期数据库（ID: {analysis_id}）")
 
-            # 同时保存到 memory.db 用于记忆生成
+            # 同时保存到 ai_analysis.db 用于记忆生成
             try:
-                memory_db_path = str(backend.data_dir / "memory.db")
-                memory_ai_storage = AIAnalysisStorage(memory_db_path)
+                ai_analysis_db_path = str(backend.data_dir / "ai_analysis.db")
+                ai_analysis_storage = AIAnalysisStorage(ai_analysis_db_path)
 
-                # 使用相同的分析数据保存到memory.db
-                memory_analysis_id = memory_ai_storage.save_analysis_result(analysis_data)
-                memory_ai_storage.save_analysis_sections(memory_analysis_id, sections_data)
+                # 使用相同的分析数据保存到 ai_analysis.db
+                ai_analysis_id = ai_analysis_storage.save_analysis_result(analysis_data)
+                ai_analysis_storage.save_analysis_sections(ai_analysis_id, sections_data)
 
-                print(f"[持久化] AI 分析结果已同步到 memory.db（ID: {memory_analysis_id}）")
-            except Exception as memory_error:
-                print(f"[持久化] 同步到 memory.db 失败（不影响主流程）: {memory_error}")
+                print(f"[持久化] AI 分析结果已同步到 ai_analysis.db（ID: {ai_analysis_id}）")
+            except Exception as ai_analysis_error:
+                print(f"[持久化] 同步到 ai_analysis.db 失败（不影响主流程）: {ai_analysis_error}")
 
         except Exception as e:
             import traceback
             print(f"[持久化] 保存 AI 分析结果失败: {e}")
             traceback.print_exc()
 
-        # 2. 更新关键词统计到 memory.db
+        # 2. 更新关键词统计到 ai_analysis.db
         try:
             memory_conn = self.storage_manager.ensure_memory_db()
             from trendradar.persistence.keyword_stats import KeywordStatsManager
@@ -2575,11 +2575,11 @@ def _handle_memory_commands(args, config: Dict) -> None:
 
     # 创建上下文获取数据库路径
     ctx = AppContext(config)
-    # 记忆生成需要使用 memory.db 的路径，不是每日数据库路径
+    # 记忆生成需要使用 ai_analysis.db 的路径，不是每日数据库路径
     storage_config = config.get("STORAGE", {})
     data_dir = storage_config.get("DATA_DIR", "output")
     from pathlib import Path
-    db_path = str(Path(data_dir) / "memory.db")
+    db_path = str(Path(data_dir) / "ai_analysis.db")
 
     # 获取存储管理器用于数据同步
     storage_manager = ctx.get_storage_manager()

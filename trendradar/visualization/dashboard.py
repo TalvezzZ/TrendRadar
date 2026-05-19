@@ -22,7 +22,7 @@ class DashboardGenerator:
             data_dir: 数据目录路径
         """
         self.data_dir = Path(data_dir)
-        self.memory_db = self.data_dir / "memory.db"
+        self.ai_analysis_db = self.data_dir / "ai_analysis.db"
         self.news_dir = self.data_dir / "news"
 
     def generate(self, output_path: Optional[str] = None) -> str:
@@ -62,7 +62,7 @@ class DashboardGenerator:
 
     def _get_overview_stats(self) -> Dict[str, Any]:
         """获取概览统计"""
-        if not self.memory_db.exists():
+        if not self.ai_analysis_db.exists():
             return {
                 "total_memories": 0,
                 "daily_summaries": 0,
@@ -70,7 +70,7 @@ class DashboardGenerator:
                 "last_update": None,
             }
 
-        conn = sqlite3.connect(self.memory_db)
+        conn = sqlite3.connect(self.ai_analysis_db)
         cursor = conn.cursor()
 
         try:
@@ -101,10 +101,10 @@ class DashboardGenerator:
 
     def _get_memory_timeline(self) -> List[Dict[str, Any]]:
         """获取记忆时间线数据"""
-        if not self.memory_db.exists():
+        if not self.ai_analysis_db.exists():
             return []
 
-        conn = sqlite3.connect(self.memory_db)
+        conn = sqlite3.connect(self.ai_analysis_db)
         cursor = conn.cursor()
 
         try:
@@ -195,10 +195,10 @@ class DashboardGenerator:
 
     def _get_memory_relations(self) -> List[Dict[str, Any]]:
         """获取记忆关系图谱数据"""
-        if not self.memory_db.exists():
+        if not self.ai_analysis_db.exists():
             return []
 
-        conn = sqlite3.connect(self.memory_db)
+        conn = sqlite3.connect(self.ai_analysis_db)
         cursor = conn.cursor()
 
         try:

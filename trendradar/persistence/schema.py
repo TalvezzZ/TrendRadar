@@ -70,7 +70,7 @@ def initialize_memory_tables(conn: sqlite3.Connection) -> None:
 
 def initialize_memory_db(db_path: str) -> sqlite3.Connection:
     """
-    初始化 memory.db 数据库
+    初始化 ai_analysis.db 数据库
 
     创建数据库连接并初始化所有必要的表结构。
 

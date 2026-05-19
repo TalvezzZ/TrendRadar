@@ -22,7 +22,7 @@ class FinanceTracker:
             data_dir: 数据目录路径
         """
         self.data_dir = Path(data_dir)
-        self.db_path = self.data_dir / "memory.db"
+        self.db_path = self.data_dir / "ai_analysis.db"
 
     def save_tracking_data(self, symbol_data: Dict, keywords: List[str] = None) -> bool:
         """
