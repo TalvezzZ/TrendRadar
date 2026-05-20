@@ -158,10 +158,10 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
             db_type: 数据库类型 ("news" 或 "rss")
 
         Returns:
-            远程对象键，如 "news/2025-12-28.db" 或 "rss/2025-12-28.db"
+            远程对象键，如 "databases/news/2025-12-28.db" 或 "databases/rss/2025-12-28.db"
         """
         date_folder = self._format_date_folder(date)
-        return f"{db_type}/{date_folder}.db"
+        return f"databases/{db_type}/{date_folder}.db"
 
     def _get_local_db_path(self, date: Optional[str] = None, db_type: str = "news") -> Path:
         """
@@ -694,9 +694,9 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
         cutoff_date = self._get_configured_time() - timedelta(days=retention_days)
 
         try:
-            # 列出远程存储中 news/ 前缀下的所有对象
+            # 列出远程存储中 databases/news/ 前缀下的所有对象
             paginator = self.s3_client.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=self.bucket_name, Prefix="news/")
+            pages = paginator.paginate(Bucket=self.bucket_name, Prefix="databases/news/")
 
             # 收集需要删除的对象键
             objects_to_delete = []
@@ -709,11 +709,11 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
                 for obj in page['Contents']:
                     key = obj['Key']
 
-                    # 解析日期（格式: news/YYYY-MM-DD.db）
+                    # 解析日期（格式: databases/news/YYYY-MM-DD.db）
                     folder_date = None
                     date_str = None
                     try:
-                        date_match = re.match(r'news/(\d{4})-(\d{2})-(\d{2})\.db$', key)
+                        date_match = re.match(r'databases/news/(\d{4})-(\d{2})-(\d{2})\.db$', key)
                         if date_match:
                             folder_date = datetime(
                                 int(date_match.group(1)),
@@ -806,7 +806,7 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
                 continue
 
             # 远程对象键
-            remote_key = f"news/{date_str}.db"
+            remote_key = f"databases/news/{date_str}.db"
 
             # 检查远程是否存在
             if not self._check_object_exists(remote_key):
@@ -839,7 +839,7 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
 
         try:
             paginator = self.s3_client.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=self.bucket_name, Prefix="news/")
+            pages = paginator.paginate(Bucket=self.bucket_name, Prefix="databases/news/")
 
             for page in pages:
                 if 'Contents' not in page:
@@ -848,7 +848,7 @@ class RemoteStorageBackend(SQLiteStorageMixin, StorageBackend):
                 for obj in page['Contents']:
                     key = obj['Key']
                     # 解析日期
-                    date_match = re.match(r'news/(\d{4}-\d{2}-\d{2})\.db$', key)
+                    date_match = re.match(r'databases/news/(\d{4}-\d{2}-\d{2})\.db$', key)
                     if date_match:
                         dates.append(date_match.group(1))
 
