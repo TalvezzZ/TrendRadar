@@ -372,17 +372,26 @@ class StorageManager:
     # === 持久化模块集成方法 ===
 
     def get_memory_db_path(self) -> str:
-        """获取 ai_analysis.db 路径"""
-        if self.backend_type == 'local' or self._resolve_backend_type() == 'local':
-            from trendradar.storage.local import LocalStorageBackend
-            backend = self.get_backend()
-            if isinstance(backend, LocalStorageBackend):
-                output_dir = Path(backend.data_dir)
-                # 确保目录存在
-                output_dir.mkdir(parents=True, exist_ok=True)
-                return str(output_dir / 'ai_analysis.db')
-        # 远程模式暂不支持 ai_analysis.db
-        raise NotImplementedError("AI analysis DB not supported in remote mode yet")
+        """
+        获取 ai_analysis.db 路径
+
+        注意：即使在远程模式下，也需要操作本地数据库文件
+        （数据先保存到本地，然后同步到远程）
+        """
+        from trendradar.storage.local import LocalStorageBackend
+
+        backend = self.get_backend()
+
+        # 优先使用 LocalStorageBackend 的 data_dir
+        if isinstance(backend, LocalStorageBackend):
+            output_dir = Path(backend.data_dir)
+        else:
+            # 远程模式下，直接使用 self.data_dir
+            output_dir = Path(self.data_dir)
+
+        # 确保目录存在
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return str(output_dir / 'ai_analysis.db')
 
     def ensure_memory_db(self):
         """确保 ai_analysis.db 存在并返回连接"""
@@ -397,50 +406,62 @@ class StorageManager:
         return conn
 
     def get_today_db_connection(self):
-        """获取今天的数据库连接"""
+        """
+        获取今天的数据库连接
+
+        注意：即使在远程模式下，也需要操作本地数据库文件
+        （数据先保存到本地，然后同步到远程）
+        """
         import sqlite3
         from trendradar.storage.local import LocalStorageBackend
+        from datetime import datetime
+        from pathlib import Path
 
-        if self.backend_type == 'local' or self._resolve_backend_type() == 'local':
-            backend = self.get_backend()
-            if isinstance(backend, LocalStorageBackend):
-                from datetime import datetime
-                today = datetime.now(backend._get_configured_time().tzinfo or __import__('pytz').timezone(DEFAULT_TIMEZONE)).strftime('%Y-%m-%d')
-                db_path = backend._get_db_path(today)
+        backend = self.get_backend()
 
-                # 检查数据库是否存在，如果不存在需要先创建基础表
-                db_exists = db_path.exists()
+        # 优先使用 LocalStorageBackend 的方法
+        if isinstance(backend, LocalStorageBackend):
+            today = datetime.now(backend._get_configured_time().tzinfo or __import__('pytz').timezone(DEFAULT_TIMEZONE)).strftime('%Y-%m-%d')
+            db_path = backend._get_db_path(today)
+        else:
+            # 远程模式下，直接使用 data_dir 构建路径
+            # 因为数据会先保存到本地，然后通过 sync_databases_to_s3 上传
+            today = datetime.now(__import__('pytz').timezone(DEFAULT_TIMEZONE)).strftime('%Y-%m-%d')
+            db_path = Path(self.data_dir) / "news" / f"{today}.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
 
-                conn = sqlite3.connect(str(db_path))
-                conn.row_factory = sqlite3.Row
+        # 检查数据库是否存在，如果不存在需要先创建基础表
+        db_exists = db_path.exists()
 
-                # 如果是新数据库，先创建基础表
-                if not db_exists:
-                    from trendradar.storage.sqlite_mixin import SQLiteStorageMixin
-                    # 创建基础的新闻表
-                    conn.execute('''
-                        CREATE TABLE IF NOT EXISTS news_items (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            source_id TEXT NOT NULL,
-                            title TEXT NOT NULL,
-                            url TEXT,
-                            rank INTEGER,
-                            heat_value TEXT,
-                            timestamp TEXT NOT NULL
-                        )
-                    ''')
-                    conn.commit()
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
 
-                # 确保有 AI 分析表
-                from trendradar.persistence.schema import (
-                    initialize_ai_analysis_tables,
-                    ensure_matched_keywords_column
+        # 如果是新数据库，先创建基础表
+        if not db_exists:
+            from trendradar.storage.sqlite_mixin import SQLiteStorageMixin
+            # 创建基础的新闻表
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS news_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    url TEXT,
+                    rank INTEGER,
+                    heat_value TEXT,
+                    timestamp TEXT NOT NULL
                 )
-                initialize_ai_analysis_tables(conn)
-                ensure_matched_keywords_column(conn)
+            ''')
+            conn.commit()
 
-                return conn
-        raise NotImplementedError("Only local backend supported for now")
+        # 确保有 AI 分析表
+        from trendradar.persistence.schema import (
+            initialize_ai_analysis_tables,
+            ensure_matched_keywords_column
+        )
+        initialize_ai_analysis_tables(conn)
+        ensure_matched_keywords_column(conn)
+
+        return conn
 
     # === OSS 数据库同步功能 ===
 
@@ -800,6 +821,7 @@ class StorageManager:
             for obj in objects:
                 key = obj['Key']
                 size = obj['Size']
+                last_modified = obj.get('LastModified')
 
                 # 跳过目录对象
                 if key.endswith('/'):
@@ -811,6 +833,20 @@ class StorageManager:
                     # databases/ai_analysis.db -> output/ai_analysis.db
                     relative_path = key.replace('databases/', '', 1)
                     local_path = data_dir / relative_path
+
+                    # 检查是否需要下载（增量同步）
+                    skip_download = False
+                    if local_path.exists():
+                        local_size = local_path.stat().st_size
+                        # 如果大小相同，跳过下载
+                        if local_size == size:
+                            skip_download = True
+                            # 可选：也可以比较修改时间，但由于时区问题可能不准确
+                            # 这里只比较大小，因为数据库文件内容变化一定会导致大小变化
+
+                    if skip_download:
+                        # 跳过已存在且大小相同的文件
+                        continue
 
                     # 创建目录
                     local_path.parent.mkdir(parents=True, exist_ok=True)
