@@ -186,16 +186,17 @@ class MemoryGenerator:
         # 保存到数据库
         self.repository.create(memory)
 
-        # 创建链接：周摘要 derives_from 每日摘要
-        for daily_memory in daily_memories:
-            link = MemoryLink(
-                from_memory_id=memory.id,
-                to_memory_id=daily_memory.id,
-                link_type=LinkType.DERIVES_FROM,
-                notes=f"基于 {daily_memory.metadata.get('date', '未知日期')} 的数据",
-                created_at=now
-            )
-            self.repository.create_link(link)
+        # 创建链接：周摘要 derives_from 每日摘要（仅数据库模式支持）
+        if self.repository.db_path:  # 检查是否有数据库路径（FileBackend 模式下为 None）
+            for daily_memory in daily_memories:
+                link = MemoryLink(
+                    from_memory_id=memory.id,
+                    to_memory_id=daily_memory.id,
+                    link_type=LinkType.DERIVES_FROM,
+                    notes=f"基于 {daily_memory.metadata.get('date', '未知日期')} 的数据",
+                    created_at=now
+                )
+                self.repository.create_link(link)
 
         return memory
 

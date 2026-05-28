@@ -184,8 +184,16 @@ class FileBackend(StorageBackend):
         if memory.type not in allowed_types:
             raise ValueError(f"Invalid memory type: {memory.type}")
 
-        date = memory.created_at
-        file_name = f"{date.year}-{date.month:02d}.md"
+        # 对于 daily_summary，使用 metadata.date 决定文件名
+        # 对于其他类型，使用 created_at
+        if memory.type == MemoryType.DAILY_SUMMARY and 'date' in memory.metadata:
+            date_str = memory.metadata['date']  # 格式: YYYY-MM-DD
+            year, month, _ = date_str.split('-')
+            file_name = f"{year}-{month}.md"
+        else:
+            date = memory.created_at
+            file_name = f"{date.year}-{date.month:02d}.md"
+
         type_dir = self.base_path / memory.type
         return type_dir / file_name
 
@@ -241,8 +249,8 @@ class FileBackend(StorageBackend):
                 if yaml_content:
                     memory = self._parse_single_memory(yaml_content, md_section)
                     memories.append(memory)
-            except (MemoryParseError, MemoryCorruptedError):
-                # 跳过损坏的记忆
+            except (MemoryParseError, MemoryCorruptedError, yaml.YAMLError):
+                # 跳过损坏的记忆或YAML格式错误
                 pass
 
             i += 2  # 每个记忆占两个 section
@@ -364,10 +372,30 @@ class FileBackend(StorageBackend):
                 memories.extend(file_memories)
 
         # 日期过滤
-        if start_date:
-            memories = [m for m in memories if m.created_at >= start_date]
-        if end_date:
-            memories = [m for m in memories if m.created_at <= end_date]
+        if start_date or end_date:
+            filtered = []
+            for m in memories:
+                # 对于 daily_summary 和 weekly_digest，使用 metadata.date 过滤
+                # 对于其他类型，使用 created_at
+                if m.type in [MemoryType.DAILY_SUMMARY, MemoryType.WEEKLY_DIGEST]:
+                    # daily_summary 用 date 字段，weekly_digest 用 start_date
+                    date_str = m.metadata.get('date') or m.metadata.get('start_date')
+                    if date_str:
+                        from datetime import datetime as dt
+                        memory_date = dt.fromisoformat(date_str) if isinstance(date_str, str) else date_str
+                        if start_date and memory_date < start_date.replace(hour=0, minute=0, second=0, microsecond=0):
+                            continue
+                        if end_date and memory_date > end_date.replace(hour=23, minute=59, second=59, microsecond=999999):
+                            continue
+                        filtered.append(m)
+                else:
+                    # 其他类型使用 created_at
+                    if start_date and m.created_at < start_date:
+                        continue
+                    if end_date and m.created_at > end_date:
+                        continue
+                    filtered.append(m)
+            memories = filtered
 
         # 数量限制
         if limit:

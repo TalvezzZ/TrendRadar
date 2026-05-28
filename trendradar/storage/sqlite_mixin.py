@@ -72,6 +72,68 @@ class SQLiteStorageMixin:
         """获取 AI 筛选 schema 文件路径"""
         return Path(__file__).parent / "ai_filter_schema.sql"
 
+    def _migrate_schema_if_needed(self, conn: sqlite3.Connection, db_type: str = "news") -> None:
+        """
+        检查并迁移旧schema到新schema
+
+        Args:
+            conn: 数据库连接
+            db_type: 数据库类型
+        """
+        if db_type != "news":
+            return
+
+        cursor = conn.cursor()
+
+        # 检查news_items表是否存在platform_id列
+        cursor.execute("PRAGMA table_info(news_items)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if columns and 'platform_id' not in columns:
+            # 旧schema需要迁移
+            print("[Schema迁移] 检测到旧版数据库schema，开始迁移...")
+
+            # 备份旧表
+            cursor.execute("ALTER TABLE news_items RENAME TO news_items_old")
+
+            # 创建新表结构
+            schema_path = self._get_schema_path(db_type)
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                schema_sql = f.read()
+            cursor.executescript(schema_sql)
+
+            # 迁移数据（从旧表到新表）
+            try:
+                # 检查旧表结构
+                cursor.execute("PRAGMA table_info(news_items_old)")
+                old_columns = [row[1] for row in cursor.fetchall()]
+
+                # 如果旧表有source_id列，用它作为platform_id
+                if 'source_id' in old_columns:
+                    cursor.execute("""
+                        INSERT INTO news_items
+                        (title, platform_id, rank, url, mobile_url,
+                         first_crawl_time, last_crawl_time, crawl_count)
+                        SELECT title, source_id, rank, url, mobile_url,
+                               first_crawl_time, last_crawl_time, crawl_count
+                        FROM news_items_old
+                    """)
+                else:
+                    print("[Schema迁移] 警告：旧表结构不兼容，无法迁移数据")
+
+                # 删除旧表
+                cursor.execute("DROP TABLE news_items_old")
+                conn.commit()
+                print("[Schema迁移] 迁移完成")
+
+            except Exception as e:
+                print(f"[Schema迁移] 数据迁移失败: {e}")
+                # 回滚：恢复旧表
+                cursor.execute("DROP TABLE IF EXISTS news_items")
+                cursor.execute("ALTER TABLE news_items_old RENAME TO news_items")
+                conn.commit()
+                raise
+
     def _init_tables(self, conn: sqlite3.Connection, db_type: str = "news") -> None:
         """
         从 schema.sql 初始化数据库表结构
@@ -80,6 +142,9 @@ class SQLiteStorageMixin:
             conn: 数据库连接
             db_type: 数据库类型 ("news" 或 "rss")
         """
+        # 先尝试迁移旧schema
+        self._migrate_schema_if_needed(conn, db_type)
+
         schema_path = self._get_schema_path(db_type)
 
         if schema_path.exists():

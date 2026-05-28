@@ -2485,6 +2485,20 @@ def main():
         help="结束日期 (格式: YYYY-MM-DD，默认为上周日)"
     )
 
+    # memory backfill 子命令
+    backfill_parser = memory_subparsers.add_parser("backfill", help="从历史爬虫数据补运行AI分析")
+    backfill_parser.add_argument(
+        "--date",
+        type=str,
+        required=True,
+        help="目标日期 (格式: YYYY-MM-DD)"
+    )
+    backfill_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="强制重新分析（即使已有分析结果）"
+    )
+
     # dashboard 子命令
     dashboard_parser = subparsers.add_parser("dashboard", help="生成可视化仪表板")
     dashboard_parser.add_argument(
@@ -2621,7 +2635,12 @@ def _handle_memory_commands(args, config: Dict) -> None:
             print("=" * 60)
 
             target_date = date or (datetime.now() - timedelta(days=1))
-            print(f"\n目标日期: {target_date.strftime('%Y-%m-%d')}")
+            if args.date:
+                print(f"\n目标日期: {target_date.strftime('%Y-%m-%d')} (用户指定)")
+            else:
+                today = datetime.now().strftime('%Y-%m-%d')
+                print(f"\n目标日期: {target_date.strftime('%Y-%m-%d')} (默认为昨天，今天是 {today})")
+                print("💡 提示: 使用 --date 参数可指定其他日期，例如: --date 2026-05-21")
             print("正在生成...")
 
             memory = generate_daily_summary_sync(db_path, ai_config, date)
@@ -2639,7 +2658,39 @@ def _handle_memory_commands(args, config: Dict) -> None:
                 print(content_preview)
                 print("-" * 60)
             else:
-                print(f"\n⚠️  未找到该日期的数据，无法生成摘要")
+                print(f"\n⚠️  未找到该日期的 AI 分析数据，无法生成摘要")
+                print(f"\n📋 可能的原因:")
+                print(f"   1. {target_date.strftime('%Y-%m-%d')} 这天没有运行数据抓取")
+                print(f"   2. 数据抓取时未启用 AI 分析功能")
+                print(f"   3. AI 分析运行失败或未完成")
+
+                # 查找最近可用的日期
+                from pathlib import Path
+                ai_db_path = Path(data_dir) / "ai_analysis.db"
+                if ai_db_path.exists():
+                    import sqlite3
+                    try:
+                        conn = sqlite3.connect(str(ai_db_path))
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT DISTINCT DATE(analysis_time) as date
+                            FROM ai_analysis_results
+                            WHERE DATE(analysis_time) < ?
+                            ORDER BY date DESC
+                            LIMIT 3
+                        """, (target_date.strftime('%Y-%m-%d'),))
+                        available_dates = [row[0] for row in cursor.fetchall()]
+                        conn.close()
+
+                        if available_dates:
+                            print(f"\n💡 最近可用的日期:")
+                            for avail_date in available_dates:
+                                print(f"   - {avail_date}")
+                            print(f"\n💡 建议: 使用以下命令生成可用日期的摘要:")
+                            print(f"   uv run python -m trendradar memory daily --date {available_dates[0]}")
+                    except Exception as e:
+                        if config.get("DEBUG", False):
+                            print(f"\n[DEBUG] 查询可用日期失败: {e}")
 
         elif args.memory_command == "weekly":
             # 生成每周摘要
@@ -2695,8 +2746,54 @@ def _handle_memory_commands(args, config: Dict) -> None:
                 print(f"\n⚠️  未找到该时间范围的每日摘要，无法生成周摘要")
                 print("提示: 请先使用 'memory daily' 命令生成每日摘要")
 
+        elif args.memory_command == "backfill":
+            # 从历史爬虫数据补运行AI分析
+            try:
+                target_date = datetime.strptime(args.date, "%Y-%m-%d")
+            except ValueError:
+                print(f"❌ 日期格式错误: {args.date}，请使用 YYYY-MM-DD 格式")
+                ctx.cleanup()
+                raise SystemExit(1)
+
+            print("=" * 60)
+            print("数据回填 - AI 分析")
+            print("=" * 60)
+            print(f"\n目标日期: {target_date.strftime('%Y-%m-%d')}")
+
+            # 检查是否已有分析结果
+            if not args.force:
+                from trendradar.persistence.ai_storage import AIAnalysisStorage
+                ai_storage = AIAnalysisStorage(db_path)
+                date_str = target_date.strftime("%Y-%m-%d")
+                start_time = f"{date_str}T00:00:00"
+                end_time = f"{date_str}T23:59:59"
+                existing = ai_storage.get_analysis_by_time_range(start_time, end_time)
+                if existing:
+                    print(f"\n⚠️  该日期已有 {len(existing)} 条 AI 分析记录")
+                    print("💡 如需重新分析，请使用 --force 参数")
+                    ctx.cleanup()
+                    raise SystemExit(0)
+
+            # 调用回填函数
+            from trendradar.memory.backfill import backfill_ai_analysis
+            success = backfill_ai_analysis(
+                target_date=target_date,
+                config=config,
+                ctx=ctx,
+                storage_manager=storage_manager,
+                ai_analysis_db_path=db_path
+            )
+
+            if success:
+                generation_success = True  # 标记成功，触发上传
+                print(f"\n✅ AI 分析回填成功！")
+                print(f"\n💡 现在可以生成记忆摘要:")
+                print(f"   uv run python -m trendradar memory daily --date {target_date.strftime('%Y-%m-%d')}")
+            else:
+                print(f"\n❌ AI 分析回填失败")
+
         else:
-            print("❌ 未知的记忆命令，请使用 'daily' 或 'weekly'")
+            print("❌ 未知的记忆命令，请使用 'daily', 'weekly' 或 'backfill'")
             ctx.cleanup()
             raise SystemExit(1)
 
@@ -2715,6 +2812,11 @@ def _handle_memory_commands(args, config: Dict) -> None:
                 uploaded = storage_manager.sync_databases_to_s3()
                 if uploaded > 0:
                     print(f"[数据库同步] 已上传 {uploaded} 个数据库文件到远程")
+
+                # 同时上传记忆文件
+                memory_uploaded = storage_manager.sync_memory_markdown_to_s3()
+                if memory_uploaded > 0:
+                    print(f"[记忆同步] 已上传 {memory_uploaded} 个记忆文件到远程")
             except Exception as e:
                 print(f"[数据库同步] 上传到远程失败: {e}")
                 if config.get("DEBUG", False):
