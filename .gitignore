@@ -73,3 +73,14 @@ sync_upload.py
 
 # Documentation (保留文档框架，但排除自动生成的内容)
 记忆系统*.md
+DAILY_DIGEST_ENHANCEMENT.md
+
+# Temporary scripts (临时辅助脚本)
+scripts/check_memory_db.py
+scripts/cleanup_oss_memory_db.py
+scripts/full_memory_rebuild.sh
+scripts/generate_missing_analysis.py
+scripts/merge_ai_analysis.py
+scripts/migrate_all_oss_to_markdown.py
+scripts/quick_rebuild_all.py
+scripts/sync_oss_to_local.py
