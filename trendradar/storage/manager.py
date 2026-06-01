@@ -626,6 +626,71 @@ class StorageManager:
         print(f"[数据库同步] 上传完成，共上传 {uploaded_count} 个文件")
         return uploaded_count
 
+    def _merge_memory_markdown(self, local_content: str, remote_content: str) -> str:
+        """
+        合并本地和远程的 Markdown 文件
+
+        策略:
+        - 提取所有记忆的 ID
+        - 保留远程独有的记忆
+        - 追加到本地文件末尾
+
+        Args:
+            local_content: 本地文件内容
+            remote_content: 远程文件内容
+
+        Returns:
+            合并后的内容
+        """
+        import re
+
+        # 提取所有记忆的 ID
+        def parse_markdown_ids(content: str) -> set:
+            return set(re.findall(r'^id:\s+(.+?)\s*$', content, re.MULTILINE))
+
+        local_ids = parse_markdown_ids(local_content)
+        remote_ids = parse_markdown_ids(remote_content)
+
+        # 找出远程独有的记忆
+        remote_only_ids = remote_ids - local_ids
+
+        if not remote_only_ids:
+            return local_content
+
+        print(f"[记忆同步]   发现远程独有的记忆: {len(remote_only_ids)} 条")
+
+        # 分割远程内容为多个记忆
+        sections = remote_content.split("\n---\n")
+        merged_content = local_content.rstrip()
+
+        i = 0
+        while i < len(sections):
+            # YAML frontmatter
+            if i == 0 and sections[i].startswith("---\n"):
+                yaml_section = sections[i][4:]  # 跳过开头的 "---\n"
+            else:
+                yaml_section = sections[i]
+
+            # Markdown 内容
+            if i + 1 < len(sections):
+                md_section = sections[i + 1].strip()
+            else:
+                md_section = ""
+
+            # 检查这个记忆的 ID 是否是远程独有的
+            id_match = re.search(r'^id:\s+(.+?)\s*$', yaml_section, re.MULTILINE)
+            if id_match:
+                memory_id = id_match.group(1)
+                if memory_id in remote_only_ids:
+                    # 追加到本地内容
+                    memory_block = f"---\n{yaml_section}---\n\n{md_section}\n"
+                    merged_content += "\n" + memory_block
+                    print(f"[记忆同步]     追加记忆: {memory_id}")
+
+            i += 2  # 每个记忆占两个 section
+
+        return merged_content
+
     def sync_memory_markdown_to_s3(self) -> int:
         """
         上传记忆 Markdown 文件到 OSS
@@ -699,40 +764,54 @@ class StorageManager:
                 relative_path = md_file.relative_to(memory_dir)
                 remote_key = f"memory_markdown/{relative_path}"
                 local_size = md_file.stat().st_size
-                # 转换为 UTC aware datetime 以便比较
-                from datetime import timezone
-                local_modified = datetime.fromtimestamp(md_file.stat().st_mtime, tz=timezone.utc)
 
-                # 检查远程文件是否需要更新
-                skip_upload = False
+                # 读取本地文件内容
+                with open(md_file, 'r', encoding='utf-8') as f:
+                    local_content = f.read()
+
+                # 检查远程文件是否存在
                 try:
                     remote_obj = s3_client.head_object(Bucket=bucket_name, Key=remote_key)
                     remote_size = remote_obj['ContentLength']
-                    remote_modified = remote_obj['LastModified']
 
-                    # 如果本地文件更旧或大小相同，跳过
-                    if local_modified <= remote_modified and remote_size == local_size:
-                        skip_upload = True
-                    else:
-                        print(f"[记忆同步] 更新: {relative_path} ({local_size / 1024:.1f} KB)")
+                    # 如果大小相同，跳过（假设内容一致）
+                    if remote_size == local_size:
+                        continue
+
+                    # 大小不同，需要合并
+                    print(f"[记忆同步] 合并: {relative_path} (本地:{local_size / 1024:.1f} KB, 远程:{remote_size / 1024:.1f} KB)")
+
+                    # 下载远程文件
+                    remote_response = s3_client.get_object(Bucket=bucket_name, Key=remote_key)
+                    remote_content = remote_response['Body'].read().decode('utf-8')
+
+                    # 合并本地和远程内容
+                    merged_content = self._merge_memory_markdown(local_content, remote_content)
+
+                    # 如果合并后有变化，更新本地文件并上传
+                    if merged_content != local_content:
+                        with open(md_file, 'w', encoding='utf-8') as f:
+                            f.write(merged_content)
+                        print(f"[记忆同步]   本地文件已更新")
+
+                    upload_content = merged_content.encode('utf-8')
+                    upload_size = len(upload_content)
+
                 except ClientError as e:
                     if e.response['Error']['Code'] == '404':
+                        # 远程文件不存在，直接上传
                         print(f"[记忆同步] 上传: {relative_path} ({local_size / 1024:.1f} KB)")
+                        upload_content = local_content.encode('utf-8')
+                        upload_size = local_size
                     else:
                         raise
 
-                if skip_upload:
-                    continue
-
                 # 上传文件
-                with open(md_file, 'rb') as f:
-                    file_content = f.read()
-
                 s3_client.put_object(
                     Bucket=bucket_name,
                     Key=remote_key,
-                    Body=file_content,
-                    ContentLength=local_size,
+                    Body=upload_content,
+                    ContentLength=upload_size,
                     ContentType='text/markdown; charset=utf-8',
                 )
 
