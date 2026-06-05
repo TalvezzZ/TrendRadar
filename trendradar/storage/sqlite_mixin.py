@@ -110,14 +110,27 @@ class SQLiteStorageMixin:
 
                 # 如果旧表有source_id列，用它作为platform_id
                 if 'source_id' in old_columns:
-                    cursor.execute("""
-                        INSERT INTO news_items
-                        (title, platform_id, rank, url, mobile_url,
-                         first_crawl_time, last_crawl_time, crawl_count)
-                        SELECT title, source_id, rank, url, mobile_url,
-                               first_crawl_time, last_crawl_time, crawl_count
-                        FROM news_items_old
-                    """)
+                    # 检查旧表是否有mobile_url字段
+                    if 'mobile_url' in old_columns:
+                        # 旧表有mobile_url字段
+                        cursor.execute("""
+                            INSERT INTO news_items
+                            (title, platform_id, rank, url, mobile_url,
+                             first_crawl_time, last_crawl_time, crawl_count)
+                            SELECT title, source_id, rank, url, mobile_url,
+                                   first_crawl_time, last_crawl_time, crawl_count
+                            FROM news_items_old
+                        """)
+                    else:
+                        # 旧表没有mobile_url字段，使用空字符串
+                        cursor.execute("""
+                            INSERT INTO news_items
+                            (title, platform_id, rank, url, mobile_url,
+                             first_crawl_time, last_crawl_time, crawl_count)
+                            SELECT title, source_id, rank, url, '',
+                                   first_crawl_time, last_crawl_time, crawl_count
+                            FROM news_items_old
+                        """)
                 else:
                     print("[Schema迁移] 警告：旧表结构不兼容，无法迁移数据")
 
