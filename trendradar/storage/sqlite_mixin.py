@@ -110,29 +110,47 @@ class SQLiteStorageMixin:
 
                 # 如果旧表有source_id列，用它作为platform_id
                 if 'source_id' in old_columns:
-                    # 检查旧表是否有mobile_url字段
-                    if 'mobile_url' in old_columns:
-                        # 旧表有mobile_url字段
-                        cursor.execute("""
-                            INSERT INTO news_items
-                            (title, platform_id, rank, url, mobile_url,
-                             first_crawl_time, last_crawl_time, crawl_count)
-                            SELECT title, source_id, rank, url, mobile_url,
-                                   first_crawl_time, last_crawl_time, crawl_count
-                            FROM news_items_old
-                        """)
+                    # 构建SELECT语句，根据旧表字段动态选择
+                    # 必需字段映射
+                    select_parts = [
+                        'title',
+                        'source_id as platform_id',
+                        'rank',
+                        'url' if 'url' in old_columns else "'' as url"
+                    ]
+
+                    # 可选字段
+                    select_parts.append("mobile_url" if 'mobile_url' in old_columns else "'' as mobile_url")
+
+                    # 时间字段处理
+                    if 'first_crawl_time' in old_columns:
+                        select_parts.append('first_crawl_time')
+                    elif 'crawl_time' in old_columns:
+                        select_parts.append('crawl_time as first_crawl_time')
                     else:
-                        # 旧表没有mobile_url字段，使用空字符串
-                        cursor.execute("""
-                            INSERT INTO news_items
-                            (title, platform_id, rank, url, mobile_url,
-                             first_crawl_time, last_crawl_time, crawl_count)
-                            SELECT title, source_id, rank, url, '',
-                                   first_crawl_time, last_crawl_time, crawl_count
-                            FROM news_items_old
-                        """)
+                        select_parts.append("datetime('now') as first_crawl_time")
+
+                    if 'last_crawl_time' in old_columns:
+                        select_parts.append('last_crawl_time')
+                    elif 'crawl_time' in old_columns:
+                        select_parts.append('crawl_time as last_crawl_time')
+                    else:
+                        select_parts.append("datetime('now') as last_crawl_time")
+
+                    select_parts.append('crawl_count' if 'crawl_count' in old_columns else '1 as crawl_count')
+
+                    select_sql = ', '.join(select_parts)
+
+                    print(f"[Schema迁移] 从旧表迁移数据...")
+                    cursor.execute(f"""
+                        INSERT INTO news_items
+                        (title, platform_id, rank, url, mobile_url,
+                         first_crawl_time, last_crawl_time, crawl_count)
+                        SELECT {select_sql}
+                        FROM news_items_old
+                    """)
                 else:
-                    print("[Schema迁移] 警告：旧表结构不兼容，无法迁移数据")
+                    print("[Schema迁移] 警告：旧表结构不兼容，无法迁移数据（缺少source_id字段）")
 
                 # 删除旧表
                 cursor.execute("DROP TABLE news_items_old")
