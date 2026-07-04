@@ -50,6 +50,16 @@ def _get_env_str(key: str, default: str = "") -> str:
     return os.environ.get(key, "").strip() or default
 
 
+def _deep_merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """递归合并配置，override 中的值优先生效。"""
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge_config(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def _load_app_config(config_data: Dict) -> Dict:
     """加载应用配置"""
     app_config = config_data.get("app", {})
@@ -549,6 +559,16 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         config_data = yaml.safe_load(f)
 
     print(f"配置文件加载成功: {config_path}")
+
+    custom_config_path = os.environ.get("CUSTOM_CONFIG_PATH")
+    if custom_config_path is None:
+        custom_config_path = str(Path(config_path).with_name("config.custom.yaml"))
+
+    if Path(custom_config_path).exists():
+        with open(custom_config_path, "r", encoding="utf-8") as f:
+            custom_config_data = yaml.safe_load(f) or {}
+        config_data = _deep_merge_config(config_data or {}, custom_config_data)
+        print(f"自定义配置覆盖加载成功: {custom_config_path}")
 
     # 合并所有配置
     config = {}
