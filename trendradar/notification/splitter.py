@@ -152,17 +152,13 @@ def split_content_into_batches(
     ai_stats: Optional[Dict] = None,
     report_type: str = "热点分析报告",
     show_new_section: bool = True,
-    finance_content: Optional[str] = None,
-    memory_content: Optional[str] = None,
 ) -> List[str]:
-    """分批处理消息内容，确保词组标题+至少第一条新闻的完整性（支持热榜+RSS合并+AI分析+独立展示区+金融跟踪+记忆增强）
+    """分批处理消息内容，确保词组标题+至少第一条新闻的完整性（支持热榜+RSS合并+AI分析+独立展示区）
 
     热榜统计与RSS统计并列显示，热榜新增与RSS新增并列显示。
     region_order 控制各区域的显示顺序。
     AI分析内容根据 region_order 中的位置显示。
     独立展示区根据 region_order 中的位置显示。
-    金融跟踪内容附加在末尾（在记忆增强之前）。
-    记忆增强内容附加在最后。
 
     Args:
         report_data: 报告数据字典，包含 stats, new_titles, failed_ids, total_new_count
@@ -181,8 +177,6 @@ def split_content_into_batches(
         ai_content: AI 分析内容（已渲染的字符串，可选）
         standalone_data: 独立展示区数据（可选），包含 platforms 和 rss_feeds 列表
         ai_stats: AI 分析统计数据（可选），包含 total_news, analyzed_news, max_news_limit 等
-        finance_content: 金融跟踪内容（已渲染的字符串，可选）
-        memory_content: 记忆增强内容（已渲染的字符串，可选）
 
     Returns:
         分批后的消息内容列表
@@ -217,71 +211,99 @@ def split_content_into_batches(
 
     # 构建头部信息
     base_header = ""
-    
-    # 准备 AI 分析统计行（如果存在）
-    ai_stats_line = ""
-    if ai_stats and ai_stats.get("analyzed_news", 0) > 0:
-        analyzed_news = ai_stats.get("analyzed_news", 0)
-        total_news = ai_stats.get("total_news", 0)
-        ai_mode = ai_stats.get("ai_mode", "")
 
-        # 构建分析数显示：如果被截断则显示 "实际分析数/总可分析数"
-        if total_news > analyzed_news:
-            news_display = f"{analyzed_news}/{total_news}"
-        else:
-            news_display = str(analyzed_news)
-
-        # 如果 AI 模式与推送模式不同，显示模式标识
-        mode_suffix = ""
-        if ai_mode and ai_mode != mode:
-            mode_map = {
-                "daily": "全天汇总",
-                "current": "当前榜单",
-                "incremental": "增量分析"
-            }
-            mode_label = mode_map.get(ai_mode, ai_mode)
-            mode_suffix = f" ({mode_label})"
-
-        if format_type in ("wework", "bark", "ntfy", "feishu", "dingtalk"):
-            ai_stats_line = f"**AI 分析数：** {news_display}{mode_suffix}\n"
-        elif format_type == "slack":
-            ai_stats_line = f"*AI 分析数：* {news_display}{mode_suffix}\n"
-        elif format_type == "telegram":
-            ai_stats_line = f"AI 分析数： {news_display}{mode_suffix}\n"
-
-    # 构建统一的头部（总是显示总新闻数、时间和类型）
-    if format_type in ("wework", "bark"):
-        base_header = f"**总新闻数：** {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"**时间：** {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"**类型：** {report_type}\n\n"
+    # 格式化粗体标记
+    if format_type == "slack":
+        b_s, b_e = "*", "*"
     elif format_type == "telegram":
-        base_header = f"总新闻数： {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"时间： {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"类型： {report_type}\n\n"
-    elif format_type == "ntfy":
-        base_header = f"**总新闻数：** {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"**时间：** {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"**类型：** {report_type}\n\n"
-    elif format_type == "feishu":
-        base_header = f"**总新闻数：** {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"**时间：** {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"**类型：** {report_type}\n\n"
-        base_header += "---\n\n"
-    elif format_type == "dingtalk":
-        base_header = f"**总新闻数：** {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"**时间：** {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"**类型：** {report_type}\n\n"
-        base_header += "---\n\n"
-    elif format_type == "slack":
-        base_header = f"*总新闻数：* {total_titles}\n"
-        base_header += ai_stats_line
-        base_header += f"*时间：* {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        base_header += f"*类型：* {report_type}\n\n"
+        b_s, b_e = "", ""
+    else:
+        b_s, b_e = "**", "**"
+
+    # 提取统计数据
+    hotlist_total = report_data.get("hotlist_total", total_hotlist_count)
+    new_count = report_data.get("total_new_count", 0)
+    platform_total = report_data.get("platform_total", 0)
+    failed_count = len(report_data.get("failed_ids", []))
+    platform_success = platform_total - failed_count if platform_total else 0
+    rss_matched = report_data.get("rss_matched_count", 0)
+    rss_total_items = report_data.get("rss_total_count", 0)
+    rss_source_total = report_data.get("rss_source_total", 0)
+    rss_source_failed = report_data.get("rss_source_failed", 0)
+    rss_source_success = max(0, rss_source_total - rss_source_failed)
+
+    # === 上半部分：数据统计 ===
+
+    # 1. 总新闻
+    rss_new_count = sum(len(stat.get("titles", [])) for stat in (rss_new_items or []))
+    total_new = new_count + rss_new_count
+    total_news_line = f"{b_s}总新闻：{b_e} {total_titles} 条"
+    if total_new > 0:
+        total_news_line += f"（新增 {new_count} + {rss_new_count}）"
+    base_header += f"{total_news_line}\n"
+
+    # 2. 热榜
+    hotlist_info = f"{b_s}热榜：{b_e} {total_hotlist_count}/{hotlist_total}"
+    if platform_total > 0:
+        hotlist_info += f"（平台 {platform_success}/{platform_total}）"
+    base_header += f"{hotlist_info}\n"
+
+    # 3. RSS
+    if rss_source_total > 0:
+        rss_info = f"{b_s}RSS：{b_e} {rss_matched}/{rss_total_items}（源 {rss_source_success}/{rss_source_total}）"
+        base_header += f"{rss_info}\n"
+
+    # 4. 独立展示区（仅在有数据时显示）
+    if standalone_data:
+        sa_platform_count = sum(len(p.get("items", [])) for p in standalone_data.get("platforms", []))
+        sa_rss_count = sum(len(f.get("items", [])) for f in standalone_data.get("rss_feeds", []))
+        sa_total = sa_platform_count + sa_rss_count
+        if sa_total > 0:
+            sa_parts = []
+            if sa_platform_count > 0:
+                sa_parts.append(f"热榜 {sa_platform_count}")
+            if sa_rss_count > 0:
+                sa_parts.append(f"RSS {sa_rss_count}")
+            base_header += f"{b_s}独立展示：{b_e} {sa_total} 条（{' + '.join(sa_parts)}）\n"
+
+    # 5. AI 分析（仅在有分析数据时显示）
+    standalone_analyzed = ai_stats.get("standalone_analyzed", 0) if ai_stats else 0
+    ai_has_data = ai_stats and (ai_stats.get("analyzed_news", 0) > 0 or standalone_analyzed > 0)
+    if ai_has_data:
+        hotlist_analyzed = ai_stats.get("hotlist_analyzed", 0)
+        rss_analyzed = ai_stats.get("rss_analyzed", 0)
+        ai_mode_val = ai_stats.get("ai_mode", "")
+
+        ai_parts = [str(hotlist_analyzed)]
+        if ai_stats.get("include_rss", True):
+            ai_parts.append(str(rss_analyzed))
+        if ai_stats.get("include_standalone", False):
+            ai_parts.append(str(standalone_analyzed))
+        ai_display = " + ".join(ai_parts) if sum(int(p) for p in ai_parts) > 0 else "0"
+
+        mode_suffix = ""
+        if ai_mode_val and ai_mode_val != mode:
+            mode_map = {"daily": "全天汇总", "current": "当前榜单", "incremental": "增量分析"}
+            mode_suffix = f" [{mode_map.get(ai_mode_val, ai_mode_val)}]"
+
+        base_header += f"{b_s}AI 分析：{b_e} {ai_display}{mode_suffix}\n"
+
+    # === 空行分隔 ===
+    base_header += "\n"
+
+    # === 下半部分：元信息 ===
+    base_header += f"{b_s}类型：{b_e} {report_type}\n"
+    base_header += f"{b_s}时间：{b_e} {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    top_words = report_data.get("stats", [])[:3]
+    if top_words:
+        topics = " | ".join(f"{s['word']}({s['count']})" for s in top_words)
+        base_header += f"{b_s}最热话题：{b_e} {topics}\n"
+
+    if format_type in ("feishu", "dingtalk"):
+        base_header += "\n---\n\n"
+    else:
+        base_header += "\n"
 
     base_footer = ""
     if format_type in ("wework", "bark"):
@@ -961,95 +983,6 @@ def split_content_into_batches(
                 current_batch_has_content = True
             else:
                 current_batch = test_content
-                current_batch_has_content = True
-
-    # 处理记忆增强内容（总是在最后）
-    # 处理金融增强内容（在记忆增强之前）
-    if finance_content:
-        finance_separator = ""
-        if current_batch_has_content:
-            if format_type == "feishu":
-                finance_separator = f"\n{feishu_separator}\n\n"
-            elif format_type == "dingtalk":
-                finance_separator = "\n---\n\n"
-            elif format_type in ("wework", "bark"):
-                finance_separator = "\n\n\n\n"
-            elif format_type in ("telegram", "ntfy", "slack"):
-                finance_separator = "\n\n"
-
-        # 尝试将金融内容添加到当前批次
-        test_content = current_batch + finance_separator + finance_content
-        if (
-            len(test_content.encode("utf-8")) + len(base_footer.encode("utf-8"))
-            < max_bytes
-        ):
-            current_batch = test_content
-            current_batch_has_content = True
-        else:
-            if current_batch_has_content:
-                _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
-
-            # 金融内容可能很长，按行拆分成多个批次
-            footer_size = len(base_footer.encode("utf-8"))
-            header_size = len(base_header.encode("utf-8"))
-            available = max_bytes - footer_size - header_size
-
-            finance_lines = finance_content.split("\n")
-            current_batch = base_header
-            current_batch_has_content = False
-
-            for line in finance_lines:
-                test_line = line + "\n" if not line.endswith("\n") else line
-                test_content = current_batch + test_line
-                if len(test_content.encode("utf-8")) + footer_size >= max_bytes and current_batch_has_content:
-                    _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
-                    current_batch = base_header + test_line
-                else:
-                    current_batch = test_content
-                current_batch_has_content = True
-
-    # 处理记忆增强内容（总是在最后）
-    if memory_content:
-        memory_separator = ""
-        if current_batch_has_content:
-            if format_type == "feishu":
-                memory_separator = f"\n{feishu_separator}\n\n"
-            elif format_type == "dingtalk":
-                memory_separator = "\n---\n\n"
-            elif format_type in ("wework", "bark"):
-                memory_separator = "\n\n\n\n"
-            elif format_type in ("telegram", "ntfy", "slack"):
-                memory_separator = "\n\n"
-
-        # 尝试将记忆内容添加到当前批次
-        test_content = current_batch + memory_separator + memory_content
-        if (
-            len(test_content.encode("utf-8")) + len(base_footer.encode("utf-8"))
-            < max_bytes
-        ):
-            current_batch = test_content
-            current_batch_has_content = True
-        else:
-            if current_batch_has_content:
-                _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
-
-            # 记忆内容可能很长，按行拆分成多个批次
-            footer_size = len(base_footer.encode("utf-8"))
-            header_size = len(base_header.encode("utf-8"))
-            available = max_bytes - footer_size - header_size
-
-            memory_lines = memory_content.split("\n")
-            current_batch = base_header
-            current_batch_has_content = False
-
-            for line in memory_lines:
-                test_line = line + "\n" if not line.endswith("\n") else line
-                test_content = current_batch + test_line
-                if len(test_content.encode("utf-8")) + footer_size >= max_bytes and current_batch_has_content:
-                    _safe_append_batch(batches, current_batch, base_footer, max_bytes, base_header)
-                    current_batch = base_header + test_line
-                else:
-                    current_batch = test_content
                 current_batch_has_content = True
 
     # 完成最后批次
@@ -1789,7 +1722,8 @@ def _format_standalone_platform_item(item: Dict, index: int, format_type: str, r
     # 如果没有 ranks 列表，用单个 rank 构造
     if not ranks and rank > 0:
         ranks = [rank]
-    rank_display = format_rank_display(ranks, rank_threshold, format_type) if ranks else ""
+    rank_timeline = item.get("rank_timeline")
+    rank_display = format_rank_display(ranks, rank_threshold, format_type, rank_timeline=rank_timeline) if ranks else ""
 
     # 构建时间显示（用 ~ 连接范围，与热点词汇统计区一致）
     # 将 HH-MM 格式转换为 HH:MM 格式

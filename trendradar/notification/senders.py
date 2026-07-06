@@ -33,6 +33,25 @@ from .batch import add_batch_headers, get_max_batch_header_size
 from .formatters import convert_markdown_to_mrkdwn, strip_markdown
 
 
+def _extract_ai_stats(ai_analysis) -> Optional[Dict]:
+    """从 AI 分析结果中提取统计数据"""
+    if not ai_analysis or not getattr(ai_analysis, "success", False):
+        return None
+    return {
+        "total_news": getattr(ai_analysis, "total_news", 0),
+        "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
+        "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
+        "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
+        "rss_count": getattr(ai_analysis, "rss_count", 0),
+        "hotlist_analyzed": getattr(ai_analysis, "hotlist_analyzed", 0),
+        "rss_analyzed": getattr(ai_analysis, "rss_analyzed", 0),
+        "standalone_analyzed": getattr(ai_analysis, "standalone_analyzed", 0),
+        "ai_mode": getattr(ai_analysis, "ai_mode", ""),
+        "include_rss": getattr(ai_analysis, "include_rss", True),
+        "include_standalone": getattr(ai_analysis, "include_standalone", False),
+    }
+
+
 def _render_ai_analysis(ai_analysis: Any, channel: str) -> str:
     """渲染 AI 分析内容为指定渠道格式"""
     if not ai_analysis:
@@ -43,123 +62,6 @@ def _render_ai_analysis(ai_analysis: Any, channel: str) -> str:
         renderer = get_ai_analysis_renderer(channel)
         return renderer(ai_analysis)
     except ImportError:
-        return ""
-
-
-def _render_memory_enhancement(memory_enhancement: Optional[Dict], original_content: str = "") -> str:
-    """渲染记忆增强内容（包括智能洞察和每日摘要）"""
-    if not memory_enhancement:
-        return ""
-
-    sections = []
-
-    try:
-        # 1. 渲染智能洞察部分（原有的记忆增强功能）
-        # 创建一个临时的 memory_enhancement 字典，不包含 daily_digest
-        temp_enhancement = {k: v for k, v in memory_enhancement.items() if k != "daily_digest"}
-
-        if temp_enhancement:
-            from trendradar.memory.enhancer import MemoryEnhancer
-            enhancer = MemoryEnhancer()
-            # 使用 enhancer 的 format 方法来生成记忆增强部分
-            # 只返回增强部分，不包含原始内容
-            full_content = enhancer.format_enhanced_notification(original_content, temp_enhancement)
-            # 提取增强部分（去掉原始内容）
-            if original_content and full_content.startswith(original_content):
-                insight_content = full_content[len(original_content):]
-            else:
-                insight_content = full_content
-
-            if insight_content.strip():
-                sections.append(insight_content.strip())
-
-    except Exception as e:
-        print(f"[记忆增强] 智能洞察格式化失败: {e}")
-
-    try:
-        # 2. 渲染每日摘要部分
-        daily_digest = memory_enhancement.get("daily_digest")
-        if daily_digest:
-            sections.append(daily_digest.strip())
-
-    except Exception as e:
-        print(f"[记忆增强] 每日摘要格式化失败: {e}")
-
-    # 合并所有部分
-    return "\n\n".join(sections) if sections else ""
-
-
-def _render_finance_enhancement(finance_enhancement: Optional[Dict], original_content: str = "") -> str:
-    """渲染金融增强内容"""
-    if not finance_enhancement or not finance_enhancement.get("finance_data"):
-        return ""
-
-    try:
-        sections = []
-        sections.append("━━━━━━━━━━━━━━━━━━")
-        sections.append("💹 相关标的表现")
-        sections.append("")
-
-        for kw_data in finance_enhancement["finance_data"]:
-            sections.append(f"【{kw_data['keyword']}】")
-
-            for symbol in kw_data["symbols"]:
-                # 涨跌符号
-                if symbol["change_pct"] > 0:
-                    direction = "⬆️"
-                elif symbol["change_pct"] < 0:
-                    direction = "⬇️"
-                else:
-                    direction = "➡️"
-
-                # 基本信息
-                line = f"• {symbol['name']} ({symbol['symbol']})     {symbol['change_pct']:+.1f}%  {direction}"
-                sections.append(line)
-
-                # 成交额
-                if symbol.get("volume"):
-                    volume = symbol["volume"]
-                    if volume >= 100000000:
-                        volume_str = f"{volume / 100000000:.1f}亿"
-                    elif volume >= 10000:
-                        volume_str = f"{volume / 10000:.1f}万"
-                    else:
-                        volume_str = f"{volume:.0f}"
-                    sections.append(f"  成交额: {volume_str}")
-
-                # 趋势信息
-                if symbol.get("trend") and abs(symbol["trend"]["total_change_pct"]) > 5:
-                    trend = symbol["trend"]
-                    sections.append(
-                        f"  📈 近{trend['days_count']}日累计: {trend['total_change_pct']:+.1f}%"
-                    )
-
-                # 异常提醒
-                if symbol.get("alert"):
-                    sections.append(f"  ⚠️  {symbol['alert']}")
-
-                # 开放式基金标注 T-1
-                if symbol["type"] == "fund" and symbol.get("data_date"):
-                    sections.append(f"  净值: {symbol['current_price']:.3f} ({symbol['data_date']})")
-
-                sections.append("")
-
-        # 统计信息
-        stats = finance_enhancement.get("stats", {})
-        if stats.get("total_tracked", 0) > 0:
-            sections.append("━━━━━━━━━━━━━━━━━━")
-            sections.append("📊 市场概览")
-            sections.append(
-                f"跟踪标的：{stats['total_tracked']} 个 | "
-                f"上涨：{stats['rising_count']} 个 | "
-                f"下跌：{stats['falling_count']} 个"
-            )
-
-        return "\n".join(sections)
-    except Exception as e:
-        print(f"[金融跟踪] 格式化失败: {e}")
-        import traceback
-        traceback.print_exc()
         return ""
 
 
@@ -209,11 +111,9 @@ def send_to_feishu(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,
-    finance_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强+金融跟踪）
+    发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区）
 
     Args:
         webhook_url: 飞书 Webhook URL
@@ -229,8 +129,6 @@ def send_to_feishu(
         get_time_func: 获取当前时间的函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
-        memory_enhancement: 记忆增强数据（可选）
-        finance_enhancement: 金融跟踪数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -243,27 +141,9 @@ def send_to_feishu(
     # 日志前缀
     log_prefix = f"飞书{account_label}" if account_label else "飞书"
 
-    # 渲染 AI 分析内容（如果有）
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "feishu")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "feishu") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("feishu")
@@ -279,8 +159,6 @@ def send_to_feishu(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -366,10 +244,9 @@ def send_to_dingtalk(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到钉钉（支持分批发送，支持热榜+RSS合并+独立展示区+记忆增强）
+    发送到钉钉（支持分批发送，支持热榜+RSS合并+独立展示区）
 
     Args:
         webhook_url: 钉钉 Webhook URL
@@ -384,7 +261,6 @@ def send_to_dingtalk(
         split_content_func: 内容分批函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
-        memory_enhancement: 记忆增强数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -397,27 +273,9 @@ def send_to_dingtalk(
     # 日志前缀
     log_prefix = f"钉钉{account_label}" if account_label else "钉钉"
 
-    # 渲染 AI 分析内容（如果有）
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "dingtalk")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "dingtalk") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 预留批次头部空间，避免添加头部后超限
     header_reserve = get_max_batch_header_size("dingtalk")
@@ -433,8 +291,6 @@ def send_to_dingtalk(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -505,10 +361,9 @@ def send_to_wework(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,
 ) -> bool:
     """
-    发送到企业微信（支持分批发送，支持 markdown 和 text 两种格式，支持热榜+RSS合并+独立展示区+记忆增强）
+    发送到企业微信（支持分批发送，支持 markdown 和 text 两种格式，支持热榜+RSS合并+独立展示区）
 
     Args:
         webhook_url: 企业微信 Webhook URL
@@ -524,7 +379,6 @@ def send_to_wework(
         split_content_func: 内容分批函数
         rss_items: RSS 统计条目列表（可选，用于合并推送）
         rss_new_items: RSS 新增条目列表（可选，用于新增区块）
-        memory_enhancement: 记忆增强数据（可选）
 
     Returns:
         bool: 发送是否成功
@@ -548,27 +402,9 @@ def send_to_wework(
     # text 模式使用 wework_text，markdown 模式使用 wework
     header_format_type = "wework_text" if is_text_mode else "wework"
 
-    # 渲染 AI 分析内容（如果有）
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "wework")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "wework") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size(header_format_type)
@@ -580,8 +416,6 @@ def send_to_wework(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -654,7 +488,7 @@ def send_to_telegram(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,) -> bool:
+) -> bool:
     """
     发送到 Telegram（支持分批发送，支持热榜+RSS合并+独立展示区）
 
@@ -686,27 +520,9 @@ def send_to_telegram(
     # 日志前缀
     log_prefix = f"Telegram{account_label}" if account_label else "Telegram"
 
-    # 渲染 AI 分析内容（如果有）
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "telegram")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "telegram") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("telegram")
@@ -718,8 +534,6 @@ def send_to_telegram(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -948,7 +762,7 @@ def send_to_ntfy(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,) -> bool:
+) -> bool:
     """
     发送到 ntfy（支持分批发送，严格遵守4KB限制，支持热榜+RSS合并+独立展示区）
 
@@ -1003,27 +817,9 @@ def send_to_ntfy(
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
 
-    # 渲染 AI 分析内容（如果有），合并到主内容中
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "ntfy")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "ntfy") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("ntfy")
@@ -1035,8 +831,6 @@ def send_to_ntfy(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -1158,7 +952,7 @@ def send_to_bark(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,) -> bool:
+) -> bool:
     """
     发送到 Bark（支持分批发送，使用 markdown 格式，支持热榜+RSS合并+独立展示区）
 
@@ -1198,27 +992,9 @@ def send_to_bark(
     # 构建正确的 API 端点
     api_endpoint = f"{parsed_url.scheme}://{parsed_url.netloc}/push"
 
-    # 渲染 AI 分析内容（如果有），合并到主内容中
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "bark")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "bark") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("bark")
@@ -1230,8 +1006,6 @@ def send_to_bark(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -1340,7 +1114,7 @@ def send_to_slack(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,) -> bool:
+) -> bool:
     """
     发送到 Slack（支持分批发送，使用 mrkdwn 格式，支持热榜+RSS合并+独立展示区）
 
@@ -1369,27 +1143,9 @@ def send_to_slack(
     # 日志前缀
     log_prefix = f"Slack{account_label}" if account_label else "Slack"
 
-    # 渲染 AI 分析内容（如果有），合并到主内容中
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        ai_content = _render_ai_analysis(ai_analysis, "slack")
-        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-                "ai_mode": getattr(ai_analysis, "ai_mode", ""),
-            }
-
-    # 渲染记忆增强内容（如果有）
-    memory_content = _render_memory_enhancement(memory_enhancement) if memory_enhancement else None
-
-    # 渲染金融增强内容（如果有）
-    finance_content = _render_finance_enhancement(finance_enhancement) if finance_enhancement else None
+    # 渲染 AI 分析内容并提取统计数据
+    ai_content = _render_ai_analysis(ai_analysis, "slack") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("slack")
@@ -1401,8 +1157,6 @@ def send_to_slack(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部（已预留空间，不会超限）
@@ -1467,7 +1221,7 @@ def send_to_generic_webhook(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
-    memory_enhancement: Optional[Dict] = None,) -> bool:
+) -> bool:
     """
     发送到通用 Webhook（支持分批发送，支持自定义 JSON 模板，支持热榜+RSS合并+独立展示区）
 
@@ -1500,21 +1254,9 @@ def send_to_generic_webhook(
     # 日志前缀
     log_prefix = f"通用Webhook{account_label}" if account_label else "通用Webhook"
 
-    # 渲染 AI 分析内容（如果有）
-    ai_content = None
-    ai_stats = None
-    if ai_analysis:
-        # 通用 Webhook 使用 markdown 格式渲染 AI 分析
-        ai_content = _render_ai_analysis(ai_analysis, "wework")
-        # 提取 AI 分析统计数据
-        if getattr(ai_analysis, "success", False):
-            ai_stats = {
-                "total_news": getattr(ai_analysis, "total_news", 0),
-                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
-                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
-                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
-                "rss_count": getattr(ai_analysis, "rss_count", 0),
-            }
+    # 渲染 AI 分析内容并提取统计数据（通用 Webhook 使用 markdown 格式）
+    ai_content = _render_ai_analysis(ai_analysis, "wework") if ai_analysis else None
+    ai_stats = _extract_ai_stats(ai_analysis)
 
     # 获取分批内容
     # 使用 'wework' 作为 format_type 以获取 markdown 格式的通用输出
@@ -1528,8 +1270,6 @@ def send_to_generic_webhook(
         standalone_data=standalone_data,
         ai_stats=ai_stats,
         report_type=report_type,
-        finance_content=finance_content,
-        memory_content=memory_content,
     )
 
     # 统一添加批次头部
