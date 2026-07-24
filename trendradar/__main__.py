@@ -1412,6 +1412,10 @@ class NewsAnalyzer:
         # 重新获取 mode_strategy，确保 report_type 与覆盖后的 report_mode 一致
         mode_strategy = self._get_mode_strategy()
 
+        # Keep the raw crawl separate from historical data used by current/daily reports.
+        fetched_results = results
+        fetched_id_to_name = id_to_name
+
         # 使用 schedule 决定的 frequency_file 覆盖默认值
         self.frequency_file = schedule.frequency_file
 
@@ -1575,6 +1579,16 @@ class NewsAnalyzer:
         if html_file:
             print(f"HTML报告已生成: {html_file}")
             print(f"最新报告已更新: output/html/latest/{self.report_mode}.html")
+
+        from trendradar_custom.daily_export import build_daily_payload, export_daily_json
+        export_daily_json(build_daily_payload(
+            date=self.ctx.format_date(),
+            fetched_at=self.ctx.get_time().isoformat(),
+            results=fetched_results,
+            id_to_name=fetched_id_to_name,
+            ai_result=ai_result,
+            rss_items=raw_rss_items,
+        ), upload=self.is_github_actions or bool(os.environ.get("S3_BUCKET_NAME")))
 
         # 发送通知
         if mode_strategy["should_send_notification"]:

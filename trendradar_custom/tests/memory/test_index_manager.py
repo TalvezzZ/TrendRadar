@@ -154,6 +154,52 @@ class TestMemoryIndexManager:
         assert '[2026-05-01](daily_summary/2026-05.md#test-001)' in content
         assert '描述，关键词：AI、区块链' in content
 
+    def test_generate_index_uses_daily_metadata_date(self, file_backend, index_manager):
+        """每日摘要索引显示业务日期，而不是生成时间。"""
+        memory = Memory(
+            id='daily-20260708',
+            type=MemoryType.DAILY_SUMMARY,
+            title='每日摘要',
+            description='基于当天数据的摘要',
+            content='内容',
+            metadata={'date': '2026-07-08'},
+            created_at=datetime(2026, 5, 22, 10, 30),
+            updated_at=datetime(2026, 5, 22, 10, 30)
+        )
+        file_backend.create_memory(memory)
+
+        file_path = file_backend._get_file_path(memory)
+        memories_data = {
+            MemoryType.DAILY_SUMMARY: index_manager._scan_file(file_path)
+        }
+        content = index_manager._generate_index_content(memories_data)
+
+        assert '[2026-07-08](daily_summary/2026-07.md#daily-20260708)' in content
+        assert '2026-05-22' not in content
+
+    def test_generate_index_uses_weekly_metadata_range(self, file_backend, index_manager):
+        """每周摘要索引显示周区间，而不是生成时间。"""
+        memory = Memory(
+            id='weekly-20260706',
+            type=MemoryType.WEEKLY_DIGEST,
+            title='每周摘要',
+            description='本周摘要',
+            content='内容',
+            metadata={'start_date': '2026-07-06', 'end_date': '2026-07-12'},
+            created_at=datetime(2026, 5, 22, 10, 30),
+            updated_at=datetime(2026, 5, 22, 10, 30)
+        )
+        file_backend.create_memory(memory)
+
+        file_path = file_backend._get_file_path(memory)
+        memories_data = {
+            MemoryType.WEEKLY_DIGEST: index_manager._scan_file(file_path)
+        }
+        content = index_manager._generate_index_content(memories_data)
+
+        assert '[2026-07-06 至 2026-07-12](weekly_digest/2026-05.md#weekly-20260706)' in content
+        assert '2026-05-22' not in content
+
     def test_generate_index_content_multiple_types(self, file_backend, index_manager):
         """测试生成索引内容（多种类型）"""
         # 创建不同类型的记忆

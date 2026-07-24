@@ -114,13 +114,19 @@ class MemoryIndexManager:
                     i += 2
                     continue
 
+                metadata = yaml_content.get('metadata', {}) or {}
+                created_at = datetime.fromisoformat(yaml_content.get('created_at'))
+                display_date = self._get_display_date(yaml_content.get('type'), metadata, created_at)
+
                 # 提取所需字段
                 memory_info = {
                     'id': yaml_content.get('id'),
                     'title': yaml_content.get('title'),
                     'description': yaml_content.get('description'),
-                    'created_at': datetime.fromisoformat(yaml_content.get('created_at')),
-                    'keywords': yaml_content.get('metadata', {}).get('keywords', [])
+                    'created_at': created_at,
+                    'display_date': display_date,
+                    'file_path': str(file_path.relative_to(self.base_path)),
+                    'keywords': metadata.get('keywords', [])
                 }
 
                 memories.append(memory_info)
@@ -131,6 +137,21 @@ class MemoryIndexManager:
             i += 2  # 每个记忆占两个 section
 
         return memories
+
+    def _get_display_date(self, memory_type: str, metadata: Dict, created_at: datetime) -> str:
+        """Return the business date shown in MEMORY.md."""
+        if memory_type == MemoryType.DAILY_SUMMARY and metadata.get('date'):
+            return metadata['date']
+
+        if memory_type == MemoryType.WEEKLY_DIGEST:
+            start_date = metadata.get('start_date')
+            end_date = metadata.get('end_date')
+            if start_date and end_date:
+                return f"{start_date} 至 {end_date}"
+            if start_date:
+                return start_date
+
+        return created_at.strftime('%Y-%m-%d')
 
     def _generate_index_content(self, all_memories: Dict[str, List]) -> str:
         """
@@ -169,12 +190,8 @@ class MemoryIndexManager:
             # 记忆条目
             memories = all_memories[mem_type]
             for memory in memories:
-                # 格式化日期
-                date_str = memory['created_at'].strftime('%Y-%m-%d')
-
-                # 文件路径（相对于 base_path）
-                year_month = memory['created_at'].strftime('%Y-%m')
-                file_path = f"{mem_type}/{year_month}.md"
+                date_str = memory['display_date']
+                file_path = memory['file_path']
 
                 # 锚点
                 anchor = memory['id']
