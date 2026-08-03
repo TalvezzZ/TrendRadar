@@ -38,6 +38,8 @@ class AIClient:
         self.timeout = config.get("TIMEOUT", 120)
         self.num_retries = config.get("NUM_RETRIES", 2)
         self.fallback_models = config.get("FALLBACK_MODELS", [])
+        self.last_finish_reason = ""
+        self.last_usage = {}
 
     def chat(
         self,
@@ -91,14 +93,24 @@ class AIClient:
         # 调用 LiteLLM
         response = completion(**params)
 
+        choice = response.choices[0]
+        self.last_finish_reason = getattr(choice, "finish_reason", "") or ""
+        usage = getattr(response, "usage", None)
+        self.last_usage = usage.model_dump() if hasattr(usage, "model_dump") else (usage or {})
+
         # 提取响应内容
         # 某些模型/提供商返回 list（内容块）而非 str，统一转为 str
-        content = response.choices[0].message.content
+        message = choice.message
+        content = getattr(message, "content", None)
         if isinstance(content, list):
             content = "\n".join(
-                item.get("text", str(item)) if isinstance(item, dict) else str(item)
+                item.get("text", "") if isinstance(item, dict) else str(item)
                 for item in content
             )
+
+        # Some reasoning-capable providers put the usable text in a separate field.
+        if not content:
+            content = getattr(message, "reasoning_content", "") or ""
         return content or ""
 
     def validate_config(self) -> tuple[bool, str]:

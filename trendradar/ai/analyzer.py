@@ -208,7 +208,13 @@ class AIAnalyzer:
             result = self._parse_response(response)
 
             # JSON 解析失败时的重试兜底（仅重试一次）
-            if result.error and "JSON 解析错误" in result.error:
+            # 截断响应再发送一次完整修复请求会重复消耗大量 token；本地修复/文本兜底优先。
+            if (
+                result.error
+                and "JSON 解析错误" in result.error
+                and self.client.last_finish_reason not in ("length", "max_tokens")
+                and response.strip()
+            ):
                 print(f"[AI] JSON 解析失败，尝试让 AI 修复...")
                 retry_result = self._retry_fix_json(response, result.error)
                 if retry_result and retry_result.success and not retry_result.error:
@@ -559,7 +565,11 @@ class AIAnalyzer:
         result = AIAnalysisResult(raw_response=response)
 
         if not response or not response.strip():
-            result.error = "AI 返回空响应"
+            finish_reason = self.client.last_finish_reason
+            if finish_reason in ("length", "max_tokens"):
+                result.error = "AI 响应达到输出上限，未返回完整内容"
+            else:
+                result.error = "AI 返回空响应"
             return result
 
         # 提取 JSON 文本（去掉 markdown 代码块标记）
