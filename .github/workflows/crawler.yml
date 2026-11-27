@@ -45,7 +45,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -134,10 +134,21 @@ jobs:
             exit 1
           fi
 
-      # 注意：数据库同步（下载/上传）已在 trendradar/__main__.py 中自动完成
-      # - run() 方法开始时会调用 _sync_databases_from_remote() 下载数据
-      # - run() 方法结束时会调用 _sync_databases_to_remote() 上传数据
-      # 这样本地运行和 Actions 运行行为完全一致
+      # 抓取前必须先把 data 分支还原下来：
+      # TrendRadar 靠当天早先的抓取数据判断「新增」与「脱榜」，
+      # 不还原就会把同一批新闻重复记一遍，rank_history 也会错乱。
+      - name: 恢复历史数据（data 分支）
+        if: success()
+        run: |
+          set -euo pipefail
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            echo "✓ 找到 data 分支，恢复历史"
+            git archive FETCH_HEAD | tar -x -C .
+            du -sh output/news output/rss 2>/dev/null || true
+          else
+            echo "○ 没有 data 分支，首次运行"
+            mkdir -p output/news output/rss
+          fi
 
       - name: Run crawler
         if: success()
@@ -176,4 +187,40 @@ jobs:
           S3_REGION: ${{ secrets.S3_REGION }}
           GITHUB_ACTIONS: true
         run: uv run python -m trendradar
-        # 注意：数据库上传已在 trendradar/__main__.py 的 _sync_databases_to_remote() 中自动完成
+
+      # 抓取结束后把数据推到独立的 data 分支（master 只放代码）。
+      # if: always() 是为了在抓取部分失败时也保住已经抓到的数据。
+      - name: 发布到 data 分支
+        if: always()
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          cd "$TMP"
+          git init -q
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+
+          if git fetch -q --depth=1 origin data 2>/dev/null; then
+            git reset -q --hard FETCH_HEAD
+            echo "✓ 基于已有 data 分支"
+          else
+            git checkout -q --orphan data
+            git rm -rq --cached . 2>/dev/null || true
+            echo "✓ 新建 data 分支"
+          fi
+
+          rm -rf output
+          cp -R "$GITHUB_WORKSPACE/output" .
+          # 只保留数据，不提交 html 报告等派生物
+          rm -rf output/html output/txt output/memory_markdown output/oss_sync output/oss_databases_markdown 2>/dev/null || true
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "○ 数据无变化，跳过提交"
+            exit 0
+          fi
+
+          git -c user.name="trendradar-bot" \
+              -c user.email="bot@users.noreply.github.com" \
+              commit -q -m "data: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+          git push -q origin HEAD:data
+          echo "✓ 已推送到 data 分支"
