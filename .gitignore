@@ -85,3 +85,8 @@ scripts/merge_ai_analysis.py
 scripts/migrate_all_oss_to_markdown.py
 scripts/quick_rebuild_all.py
 scripts/sync_oss_to_local.py
+
+# 本地同步产物（不提交）
+logs/
+.sync-state
+output-backup-*/

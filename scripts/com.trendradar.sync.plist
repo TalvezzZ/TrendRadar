@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.trendradar.sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/zhouxinping/PycharmProjects/TrendRadar/scripts/local-daily.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/zhouxinping/PycharmProjects/TrendRadar</string>
+
+    <!--
+      每天 08:20 和 21:20 各跑一次，对应云端 workflow 的两个抓取点
+      （cron "0 0,11 * * *" = 北京 08:00 / 19:00，以及可能的延迟窗口）。
+
+      跑两次的理由：GitHub 免费 runner 的 cron 有延迟（LocaleLens 实测延迟 8~9 小时），
+      单次拉取可能拿不到当天最后一次抓取。多拉一次成本几乎为零，同步是幂等的。
+
+      机器休眠时 launchd 会在唤醒后补跑，错过也能补上。
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>20</integer>
+        </dict>
+        <dict>
+            <key>Hour</key><integer>21</integer>
+            <key>Minute</key><integer>20</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/zhouxinping/PycharmProjects/TrendRadar/logs/sync.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/zhouxinping/PycharmProjects/TrendRadar/logs/sync.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
